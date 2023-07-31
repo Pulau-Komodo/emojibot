@@ -138,7 +138,7 @@ pub async fn command_list_emojis(
 	for (emoji, count) in emojis {
 		output.push_str(emoji.as_str());
 		if count > 1 {
-			output.extend(format!("({count})").chars());
+			write!(output, "x{count}").unwrap();
 		}
 	}
 	output.push('.');
