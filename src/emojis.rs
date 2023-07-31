@@ -1,6 +1,9 @@
-use std::{collections::HashMap, fmt::Display};
+use std::{
+	collections::HashMap,
+	fmt::{Display, Write},
+};
 
-use rand::{seq::SliceRandom, thread_rng};
+use rand::{thread_rng, Rng};
 use serenity::{
 	builder::CreateApplicationCommand,
 	model::prelude::{application_command::ApplicationCommandInteraction, ReactionType, UserId},
@@ -10,30 +13,65 @@ use sqlx::{query, Pool, Sqlite};
 
 use crate::{emoji_list::EMOJI_LIST, util::interaction_reply};
 
-pub type EmojiMap = HashMap<&'static str, (Emoji, usize)>;
+const VS16: char = '\u{fe0f}';
+
+pub type EmojiMap = HashMap<&'static str, Emoji>;
 
 #[derive(Clone, Copy, Hash, PartialEq, Eq)]
-pub struct Emoji(&'static str);
+pub struct Emoji {
+	emoji: &'static str,
+	index: usize,
+}
 
 impl Emoji {
 	pub fn random() -> Self {
-		let emoji = *EMOJI_LIST.choose(&mut thread_rng()).unwrap();
-		Self(emoji)
+		let index = thread_rng().gen_range(0..EMOJI_LIST.len());
+		Self {
+			emoji: EMOJI_LIST[index],
+			index,
+		}
 	}
-	pub fn inner(self) -> &'static str {
-		self.0
+	pub fn as_str(self) -> &'static str {
+		self.emoji
+	}
+	/// Get the file name for the Twemoji .svg file for this emoji, like "1f642.svg".
+	pub fn file_name(&self) -> String {
+		let mut string = String::with_capacity(self.emoji.len() * 6 + 3);
+		for (index, char) in self.emoji.chars().enumerate() {
+			if char == VS16 && index < 3 {
+				// For some reason, Twemoji file names never include VS16 on shorter emojis, even though some of them should have it.
+				continue;
+			}
+			if !string.is_empty() {
+				string.push('-');
+			}
+			write!(string, "{:x}", char as u32).unwrap();
+		}
+		string + ".svg"
 	}
 }
 
 impl Display for Emoji {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		write!(f, "{}", self.0)
+		write!(f, "{}", self.as_str())
+	}
+}
+
+impl PartialOrd for Emoji {
+	fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+		self.index.partial_cmp(&other.index)
+	}
+}
+
+impl Ord for Emoji {
+	fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+		self.index.cmp(&other.index)
 	}
 }
 
 impl From<Emoji> for ReactionType {
 	fn from(emoji: Emoji) -> ReactionType {
-		ReactionType::Unicode(String::from(emoji.0))
+		ReactionType::Unicode(String::from(emoji.as_str()))
 	}
 }
 
@@ -41,7 +79,7 @@ pub fn make_emoji_map() -> EmojiMap {
 	EMOJI_LIST
 		.into_iter()
 		.enumerate()
-		.map(|(index, emoji)| (emoji, (Emoji(emoji), index)))
+		.map(|(index, emoji)| (emoji, Emoji { emoji, index }))
 		.collect()
 }
 
@@ -68,20 +106,14 @@ async fn get_user_emojis(
 	.into_iter()
 	.filter_map(|record| {
 		(record.count > 0).then_some((
-			emoji_map
+			*emoji_map
 				.get(record.emoji.as_str())
-				.expect("Emoji from database was somehow not in map.")
-				.0,
+				.expect("Emoji from database was somehow not in map."),
 			record.count as u32,
 		))
 	})
 	.collect::<Vec<_>>();
-	emojis.sort_unstable_by(|a, b| {
-		usize::cmp(
-			&emoji_map.get(a.0.inner()).unwrap().1,
-			&emoji_map.get(b.0.inner()).unwrap().1,
-		)
-	});
+	emojis.sort_unstable();
 	emojis
 }
 
@@ -104,7 +136,7 @@ pub async fn command_list_emojis(
 		String::from("You have the following emojis: ")
 	};
 	for (emoji, count) in emojis {
-		output.push_str(emoji.inner());
+		output.push_str(emoji.as_str());
 		if count > 1 {
 			output.extend(format!("({count})").chars());
 		}
@@ -121,4 +153,36 @@ pub fn register_list_emojis(
 	command
 		.name("emojis")
 		.description("Check your emoji inventory.")
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn emoji_file_name() {
+		let emoji = Emoji {
+			emoji: "🙂",
+			index: 0,
+		};
+		assert_eq!(emoji.file_name(), "1f642.svg"); // Basic
+		let emoji = Emoji {
+			emoji: "👍🏽",
+			index: 0,
+		};
+		assert_eq!(emoji.file_name(), "1f44d-1f3fd.svg"); // Skin tone modifier
+		let emoji = Emoji {
+			emoji: "💇‍♂️",
+			index: 0,
+		};
+		assert_eq!(emoji.file_name(), "1f487-200d-2642-fe0f.svg"); // ZWJ, male modifier, variant selector
+		let emoji = Emoji {
+			emoji: "👨‍👩‍👧‍👦",
+			index: 0,
+		};
+		assert_eq!(
+			emoji.file_name(),
+			"1f468-200d-1f469-200d-1f467-200d-1f466.svg"
+		); // Large ZWJ-based composite
+	}
 }

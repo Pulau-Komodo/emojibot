@@ -45,7 +45,7 @@ async fn seen_today(database: &Pool<Sqlite>, user: UserId) -> bool {
 
 async fn give_emoji(database: &Pool<Sqlite>, user: UserId, emoji: Emoji) {
 	let user_id = *user.as_u64() as i64;
-	let emoji = emoji.inner();
+	let emoji = emoji.as_str();
 	query!(
 		"
 		INSERT INTO

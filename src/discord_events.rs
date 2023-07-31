@@ -5,6 +5,7 @@ use sqlx::{Pool, Sqlite};
 use crate::{
 	daily_emoji::maybe_give_daily_emoji,
 	emojis::{command_list_emojis, register_list_emojis, EmojiMap},
+	images::{command_make_raster_image, register_make_raster_image},
 };
 
 pub struct DiscordEventHandler {
@@ -33,7 +34,17 @@ impl EventHandler for DiscordEventHandler {
 		if let Interaction::ApplicationCommand(interaction) = interaction {
 			match interaction.data.name.as_str() {
 				"emojis" => {
-					command_list_emojis(&self.database, &self.emoji_map, context, interaction).await
+					command_list_emojis(&self.database, &self.emoji_map, context, interaction)
+						.await;
+				}
+				"image" => {
+					command_make_raster_image(
+						&self.database,
+						&self.emoji_map,
+						context,
+						interaction,
+					)
+					.await;
 				}
 				_ => (),
 			};
@@ -50,6 +61,9 @@ impl EventHandler for DiscordEventHandler {
 						.set_application_commands(&context.http, |commands| {
 							commands
 								.create_application_command(|command| register_list_emojis(command))
+								.create_application_command(|command| {
+									register_make_raster_image(command)
+								})
 						})
 						.await
 						.unwrap();

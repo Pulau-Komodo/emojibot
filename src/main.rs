@@ -9,6 +9,7 @@ mod daily_emoji;
 mod discord_events;
 mod emoji_list;
 mod emojis;
+mod images;
 mod util;
 
 #[tokio::main]
