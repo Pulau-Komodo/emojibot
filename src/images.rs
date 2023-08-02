@@ -7,12 +7,12 @@ use serenity::{
 	},
 	prelude::Context,
 };
-use sqlx::{Pool, Sqlite};
+use sqlx::{query, Pool, Sqlite};
 
 use crate::{emojis::EmojiMap, util::interaction_reply};
 
 pub async fn command_make_raster_image(
-	_database: &Pool<Sqlite>,
+	database: &Pool<Sqlite>,
 	emoji_map: &EmojiMap,
 	context: Context,
 	interaction: ApplicationCommandInteraction,
@@ -30,8 +30,36 @@ pub async fn command_make_raster_image(
 		interaction_reply(context, interaction, "No such emoji in my list", true).await.unwrap();
 		return;
 	};
+
+	let user_id = interaction.user.id.0 as i64;
+	let emoji_str = emoji.as_str();
+	let has_emoji = query!(
+		"
+		SELECT
+			count
+		FROM
+			emoji_inventory
+		WHERE
+			user = ? AND emoji = ?
+		",
+		user_id,
+		emoji_str
+	)
+	.fetch_optional(database)
+	.await
+	.unwrap()
+	.map(|record| record.count > 0)
+	.unwrap_or(false);
+
+	if !has_emoji {
+		interaction_reply(context, interaction, "You do not have that emoji.", true)
+			.await
+			.unwrap();
+		return;
+	}
+
 	let png = {
-		let size = 256;
+		let size = 128;
 
 		let Ok(data) = std::fs::read(String::from("./assets/svg/") + &emoji.file_name()) else {
 			eprintln!("\"{input_emoji}\" was not found in the emoji .svg files.");
@@ -66,11 +94,11 @@ pub fn register_make_raster_image(
 ) -> &mut CreateApplicationCommand {
 	command
 		.name("image")
-		.description("Generates a raster image version of a specified emoji.")
+		.description("Generates a raster image version of a specified emoji from your inventory.")
 		.create_option(|option| {
 			option
 				.name("emoji")
-				.description("The emoji to rasterize")
+				.description("The emoji to rasterize.")
 				.kind(CommandOptionType::String)
 				.required(true)
 		})
