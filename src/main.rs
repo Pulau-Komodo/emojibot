@@ -10,6 +10,7 @@ mod discord_events;
 mod emoji_list;
 mod emojis;
 mod images;
+mod trading;
 mod util;
 
 #[tokio::main]

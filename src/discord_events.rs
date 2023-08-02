@@ -6,6 +6,7 @@ use crate::{
 	daily_emoji::maybe_give_daily_emoji,
 	emojis::{command_list_emojis, register_list_emojis, EmojiMap},
 	images::{command_make_raster_image, register_make_raster_image},
+	trading,
 };
 
 pub struct DiscordEventHandler {
@@ -46,6 +47,15 @@ impl EventHandler for DiscordEventHandler {
 					)
 					.await;
 				}
+				"trade" => {
+					trading::command::execute(
+						&self.database,
+						&self.emoji_map,
+						context,
+						interaction,
+					)
+					.await;
+				}
 				_ => (),
 			};
 		}
@@ -63,6 +73,9 @@ impl EventHandler for DiscordEventHandler {
 								.create_application_command(|command| register_list_emojis(command))
 								.create_application_command(|command| {
 									register_make_raster_image(command)
+								})
+								.create_application_command(|command| {
+									trading::command::register(command)
 								})
 						})
 						.await

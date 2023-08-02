@@ -359,6 +359,7 @@ dependencies = [
  "serenity",
  "sqlx",
  "tokio",
+ "unicode-segmentation",
 ]
 
 [[package]]
