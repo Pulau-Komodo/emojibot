@@ -1,4 +1,5 @@
 use std::{
+	borrow::Cow,
 	collections::HashMap,
 	fmt::{Display, Write},
 };
@@ -6,12 +7,18 @@ use std::{
 use rand::{thread_rng, Rng};
 use serenity::{
 	builder::CreateApplicationCommand,
-	model::prelude::{application_command::ApplicationCommandInteraction, ReactionType, UserId},
+	model::prelude::{
+		application_command::ApplicationCommandInteraction, command::CommandOptionType,
+		ReactionType, UserId,
+	},
 	prelude::Context,
 };
 use sqlx::{query, Pool, Sqlite};
 
-use crate::{emoji_list::EMOJI_LIST, util::interaction_reply};
+use crate::{
+	emoji_list::EMOJI_LIST,
+	util::{get_name, interaction_reply},
+};
 
 const VS16: char = '\u{fe0f}';
 
@@ -121,20 +128,51 @@ pub async fn command_list_emojis(
 	database: &Pool<Sqlite>,
 	emoji_map: &EmojiMap,
 	context: Context,
-	interaction: ApplicationCommandInteraction,
+	mut interaction: ApplicationCommandInteraction,
 ) {
-	let emojis = get_user_emojis(database, emoji_map, interaction.user.id).await;
+	let subcommand = interaction.data.options.pop().unwrap();
+	let targets_own = subcommand.name == "own";
+	let target = if targets_own {
+		interaction.user.id
+	} else {
+		let option = subcommand.options.get(0).unwrap();
+		let id = option
+			.value
+			.as_ref()
+			.and_then(|value| value.as_str())
+			.unwrap();
+		UserId(id.parse().unwrap())
+	};
+	let is_public = if targets_own {
+		subcommand.options.get(0)
+	} else {
+		subcommand.options.get(1)
+	}
+	.is_some();
+
+	let name = if !targets_own || is_public {
+		Some(get_name(&context, interaction.guild_id.unwrap(), target).await)
+	} else {
+		None
+	};
+
+	let emojis = get_user_emojis(database, emoji_map, target).await;
 	if emojis.is_empty() {
-		interaction_reply(context, interaction, "You have no emojis. 🤔", false)
+		let message = name
+			.map(|name| Cow::from(format!("{name} has no emojis. 🤔")))
+			.unwrap_or_else(|| Cow::from("You have no emojis. 🤔"));
+		interaction_reply(context, interaction, message, !is_public)
 			.await
 			.unwrap();
 		return;
 	}
-	let mut output = if emojis.len() == 1 {
-		String::from("You only have ")
-	} else {
-		String::from("You have the following emojis: ")
+	let mut output = match (emojis.len(), name) {
+		(1, Some(name)) => format!("{name} only has "),
+		(1, None) => String::from("You only have "),
+		(_, Some(name)) => format!("{name} has the following emojis: "),
+		(_, None) => String::from("You have the following emojis: "),
 	};
+
 	for (emoji, count) in emojis {
 		output.push_str(emoji.as_str());
 		if count > 1 {
@@ -142,7 +180,7 @@ pub async fn command_list_emojis(
 		}
 	}
 	output.push('.');
-	interaction_reply(context, interaction, output, false)
+	interaction_reply(context, interaction, output, !is_public)
 		.await
 		.unwrap();
 }
@@ -151,8 +189,43 @@ pub fn register_list_emojis(
 	command: &mut CreateApplicationCommand,
 ) -> &mut CreateApplicationCommand {
 	command
-		.name("emojis")
-		.description("Check your emoji inventory.")
+		.name("inventory")
+		.description("Check someone else's emoji inventory or your own.")
+		.create_option(|option| {
+			option
+				.name("own")
+				.description("Check your own inventory.")
+				.kind(CommandOptionType::SubCommand)
+				.create_sub_option(|option| {
+					option
+						.name("show")
+						.description("Whether to post your emojis publicly.")
+						.add_string_choice("show", "show")
+						.kind(CommandOptionType::String)
+						.required(false)
+				})
+		})
+		.create_option(|option| {
+			option
+				.name("other")
+				.description("Check someone else's inventory.")
+				.kind(CommandOptionType::SubCommand)
+				.create_sub_option(|option| {
+					option
+						.name("user")
+						.description("Whose inventory to look at.")
+						.kind(CommandOptionType::User)
+						.required(true)
+				})
+				.create_sub_option(|option| {
+					option
+						.name("show")
+						.description("Whether to post the emojis publicly.")
+						.add_string_choice("show", "show")
+						.kind(CommandOptionType::String)
+						.required(false)
+				})
+		})
 }
 
 #[cfg(test)]

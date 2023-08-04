@@ -34,7 +34,7 @@ impl EventHandler for DiscordEventHandler {
 	async fn interaction_create(&self, context: Context, interaction: Interaction) {
 		if let Interaction::ApplicationCommand(interaction) = interaction {
 			match interaction.data.name.as_str() {
-				"emojis" => {
+				"inventory" => {
 					command_list_emojis(&self.database, &self.emoji_map, context, interaction)
 						.await;
 				}
