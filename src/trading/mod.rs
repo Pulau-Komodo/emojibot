@@ -220,7 +220,8 @@ pub(super) async fn try_accept_offer(
 	if let Some(button_press) = button_press {
 		match button_press.data.custom_id.as_str() {
 			"yes" => {
-				let result = try_confirm_trade(executor, emoji_map, trade, offerer_name).await;
+				let accepter_name = get_name(context, guild, accepting_user).await;
+				let result = try_confirm_trade(executor, emoji_map, trade, offerer_name, accepter_name).await;
 				match result {
 					Ok(content) => {
 						let _ = button_press
@@ -315,6 +316,7 @@ async fn try_confirm_trade(
 	emoji_map: &EmojiMap,
 	trade_offer: TradeOffer,
 	offerer_name: String,
+	accepter_name: String,
 ) -> Result<String, String> {
 	let trade = match validate_trade_offer(
 		executor,
@@ -342,7 +344,7 @@ async fn try_confirm_trade(
 	}
 	complete_trade(executor, &trade_offer).await;
 	let mut output = String::new();
-	write!(output, "You have successfully traded away your ").unwrap();
+	write!(output, "{accepter_name} successfully traded away ").unwrap();
 	trade.write_request(&mut output);
 	write!(output, " to {offerer_name} in exchange for ").unwrap();
 	trade.write_offer(&mut output);
