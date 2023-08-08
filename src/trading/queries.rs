@@ -255,7 +255,7 @@ pub(super) async fn complete_trade(executor: &Pool<Sqlite>, trade_offer: &TradeO
 	let mut transaction = executor.begin().await.unwrap();
 
 	log_trade(&mut transaction, trade_offer).await;
-	
+
 	remove_trade_offer(
 		&mut *transaction,
 		trade_offer.offering_user(),
@@ -264,10 +264,24 @@ pub(super) async fn complete_trade(executor: &Pool<Sqlite>, trade_offer: &TradeO
 	.await;
 
 	for (emoji, count) in trade_offer.offer() {
-		transfer_emoji(&mut transaction, *emoji, *count, trade_offer.offering_user(), trade_offer.target_user()).await;
+		transfer_emoji(
+			&mut transaction,
+			*emoji,
+			*count,
+			trade_offer.offering_user(),
+			trade_offer.target_user(),
+		)
+		.await;
 	}
 	for (emoji, count) in trade_offer.request() {
-		transfer_emoji(&mut transaction, *emoji, *count, trade_offer.target_user(), trade_offer.offering_user()).await;
+		transfer_emoji(
+			&mut transaction,
+			*emoji,
+			*count,
+			trade_offer.target_user(),
+			trade_offer.offering_user(),
+		)
+		.await;
 	}
 
 	// Clean up count = 0 emojis
