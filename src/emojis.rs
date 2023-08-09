@@ -44,8 +44,9 @@ impl Emoji {
 	/// Get the file name for the Twemoji .svg file for this emoji, like "1f642.svg".
 	pub fn file_name(&self) -> String {
 		let mut string = String::with_capacity(self.emoji.len() * 6 + 3);
-		for (index, char) in self.emoji.chars().enumerate() {
-			if char == VS16 && index < 3 {
+		let is_short = self.emoji.chars().nth(3).is_none();
+		for char in self.emoji.chars() {
+			if is_short && char == VS16 {
 				// For some reason, Twemoji file names never include VS16 on shorter emojis, even though some of them should have it.
 				continue;
 			}
