@@ -10,6 +10,7 @@ mod discord_events;
 mod emoji_list;
 mod emojis;
 mod images;
+mod queries;
 mod trading;
 mod util;
 

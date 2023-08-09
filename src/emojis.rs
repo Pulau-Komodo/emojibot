@@ -91,11 +91,11 @@ pub fn make_emoji_map() -> EmojiMap {
 		.collect()
 }
 
-async fn get_user_emojis(
+pub async fn get_user_emojis(
 	database: &Pool<Sqlite>,
 	emoji_map: &EmojiMap,
 	user: UserId,
-) -> Vec<(Emoji, u32)> {
+) -> Vec<(Emoji, i64)> {
 	let user_id = *user.as_u64() as i64;
 	let mut emojis = query!(
 		"
@@ -117,7 +117,7 @@ async fn get_user_emojis(
 			*emoji_map
 				.get(record.emoji.as_str())
 				.expect("Emoji from database was somehow not in map."),
-			record.count as u32,
+			record.count,
 		))
 	})
 	.collect::<Vec<_>>();

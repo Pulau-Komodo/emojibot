@@ -16,6 +16,7 @@ use std::fmt::Write;
 
 use crate::{
 	emojis::EmojiMap,
+	queries::does_user_have_emojis,
 	util::{get_name, parse_emoji_input},
 };
 
@@ -59,7 +60,7 @@ pub(super) async fn try_offer_trade(
 		return Err(String::from("Request is empty."));
 	}
 	let trade_offer = TradeOffer::new(user, target_user, offer, request)?;
-	if !does_user_have_emotes(executor, user, trade_offer.offer()).await {
+	if !does_user_have_emojis(executor, user, trade_offer.offer()).await {
 		return Err(String::from("You don't have those emojis to offer."));
 	}
 
@@ -221,7 +222,9 @@ pub(super) async fn try_accept_offer(
 		match button_press.data.custom_id.as_str() {
 			"yes" => {
 				let accepter_name = get_name(context, guild, accepting_user).await;
-				let result = try_confirm_trade(executor, emoji_map, trade, offerer_name, accepter_name).await;
+				let result =
+					try_confirm_trade(executor, emoji_map, trade, offerer_name, accepter_name)
+						.await;
 				match result {
 					Ok(content) => {
 						let _ = button_press
@@ -302,10 +305,10 @@ async fn validate_trade_offer(
 	.await else {
 		return TradeOfferValidation::NoTrade;
 	};
-	if !does_user_have_emotes(executor, target_user, trade.request()).await {
+	if !does_user_have_emojis(executor, target_user, trade.request()).await {
 		return TradeOfferValidation::TargetLacksEmojis;
 	}
-	if !does_user_have_emotes(executor, offering_user, trade.offer()).await {
+	if !does_user_have_emojis(executor, offering_user, trade.offer()).await {
 		return TradeOfferValidation::OffererLacksEmojis;
 	}
 	TradeOfferValidation::Valid(trade)
