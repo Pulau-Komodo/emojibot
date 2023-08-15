@@ -10,7 +10,10 @@ use serenity::{
 };
 use unicode_segmentation::UnicodeSegmentation;
 
-use crate::emojis::{Emoji, EmojiMap};
+use crate::{
+	emojis::{Emoji, EmojiMap},
+	special_characters::ZWNJ,
+};
 
 pub async fn interaction_reply<S>(
 	context: Context,
@@ -48,14 +51,40 @@ pub async fn get_name(context: &Context, guild: GuildId, user: UserId) -> String
 
 pub fn parse_emoji_input(emoji_map: &EmojiMap, input: &str) -> Result<Vec<(Emoji, i64)>, String> {
 	let mut emojis = HashMap::new();
-	for grapheme in input.graphemes(true) {
-		if grapheme == " " {
+	for mut grapheme in input.graphemes(true) {
+		if grapheme == " " || grapheme == ZWNJ {
 			continue;
 		}
+		grapheme = grapheme.trim_end_matches(ZWNJ);
 		let emoji = *emoji_map
 			.get(grapheme)
 			.ok_or_else(|| format!("Could not recognize \"{grapheme}\" as an emoji in my list."))?;
 		*emojis.entry(emoji).or_insert(0) += 1;
 	}
 	Ok(emojis.into_iter().collect())
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	/// This is basically just validating my understanding of the grapheme iterator as it relates to ZWNJ.
+	#[test]
+	fn grapheme_clusters() {
+		let messy_input = "\u{200C}👍👍\u{200C}🤔 \u{200C}\u{200C}\u{200C}";
+		let expected_outcome = [
+			"\u{200C}",
+			"👍",
+			"👍\u{200C}",
+			"🤔",
+			" \u{200C}\u{200C}\u{200C}",
+		];
+		for (input, expected) in messy_input.graphemes(true).zip(expected_outcome) {
+			assert_eq!(input, expected);
+		}
+		let expected_trimmed_outcome = ["", "👍", "👍", "🤔", " "];
+		for (input, expected) in messy_input.graphemes(true).zip(expected_trimmed_outcome) {
+			assert_eq!(input.trim_end_matches(ZWNJ), expected);
+		}
+	}
 }

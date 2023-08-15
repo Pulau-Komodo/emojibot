@@ -17,6 +17,7 @@ use sqlx::{query, Pool, Sqlite};
 
 use crate::{
 	emoji_list::EMOJI_LIST,
+	special_characters::ZWNJ,
 	util::{get_name, interaction_reply},
 };
 
@@ -178,6 +179,8 @@ pub async fn command_list_emojis(
 		output.push_str(emoji.as_str());
 		if count > 1 {
 			write!(output, "x{count}").unwrap();
+		} else {
+			output.push_str(ZWNJ); // To avoid some emojis combining inappropriately.
 		}
 	}
 	output.push('.');

@@ -11,6 +11,7 @@ mod emoji_list;
 mod emojis;
 mod images;
 mod queries;
+mod special_characters;
 mod trading;
 mod util;
 
