@@ -2,11 +2,7 @@ use itertools::Itertools;
 use serenity::{async_trait, model::prelude::*, prelude::*};
 use sqlx::{Pool, Sqlite};
 
-use crate::{
-	daily_emoji::maybe_give_daily_emoji,
-	emojis::{command_list_emojis, register_list_emojis, EmojiMap},
-	images, trading,
-};
+use crate::{daily_emoji::maybe_give_daily_emoji, emoji::EmojiMap, images, inventory, trading};
 
 pub struct DiscordEventHandler {
 	database: Pool<Sqlite>,
@@ -34,8 +30,7 @@ impl EventHandler for DiscordEventHandler {
 		if let Interaction::ApplicationCommand(interaction) = interaction {
 			match interaction.data.name.as_str() {
 				"inventory" => {
-					command_list_emojis(&self.database, &self.emoji_map, context, interaction)
-						.await;
+					inventory::command(&self.database, &self.emoji_map, context, interaction).await;
 				}
 				"image" => {
 					images::command_make_raster_image(
@@ -76,7 +71,7 @@ impl EventHandler for DiscordEventHandler {
 					let commands = guild
 						.set_application_commands(&context.http, |commands| {
 							commands
-								.create_application_command(|command| register_list_emojis(command))
+								.create_application_command(|command| inventory::register(command))
 								.create_application_command(|command| {
 									images::register_make_raster_image(command)
 								})

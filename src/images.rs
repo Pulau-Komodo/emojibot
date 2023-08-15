@@ -18,8 +18,8 @@ use serenity::{
 use sqlx::{query, Pool, Sqlite};
 
 use crate::{
-	emojis::{get_user_emojis, Emoji, EmojiMap},
-	queries::does_user_have_emojis,
+	emoji::{Emoji, EmojiMap},
+	queries::{does_user_have_emojis, get_user_emojis},
 	util::{interaction_reply, parse_emoji_input},
 };
 

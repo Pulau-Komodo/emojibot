@@ -11,7 +11,7 @@ use serenity::{
 use unicode_segmentation::UnicodeSegmentation;
 
 use crate::{
-	emojis::{Emoji, EmojiMap},
+	emoji::{Emoji, EmojiMap},
 	special_characters::ZWNJ,
 };
 

@@ -4,7 +4,7 @@ use serenity::{
 };
 use sqlx::{query, Pool, Sqlite};
 
-use crate::emojis::Emoji;
+use crate::emoji::Emoji;
 
 async fn seen_today(database: &Pool<Sqlite>, user: UserId) -> bool {
 	let user_id = *user.as_u64() as i64;

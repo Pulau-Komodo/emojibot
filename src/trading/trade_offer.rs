@@ -2,7 +2,7 @@ use itertools::Itertools;
 use serenity::model::prelude::UserId;
 use std::fmt::Write;
 
-use crate::emojis::Emoji;
+use crate::emoji::Emoji;
 
 /// A trade offer from one user to another user with an offered list of emojis and a requested list of emojis, both kept sorted.
 ///

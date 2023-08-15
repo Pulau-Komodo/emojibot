@@ -1,15 +1,16 @@
 use std::fs;
 
 use discord_events::DiscordEventHandler;
-use emojis::make_emoji_map;
+use emoji::make_emoji_map;
 use serenity::prelude::GatewayIntents;
 use sqlx::sqlite::SqlitePoolOptions;
 
 mod daily_emoji;
 mod discord_events;
+mod emoji;
 mod emoji_list;
-mod emojis;
 mod images;
+mod inventory;
 mod queries;
 mod special_characters;
 mod trading;

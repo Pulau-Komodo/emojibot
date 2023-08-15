@@ -15,7 +15,7 @@ use sqlx::{Pool, Sqlite};
 use std::fmt::Write;
 
 use crate::{
-	emojis::EmojiMap,
+	emoji::EmojiMap,
 	queries::does_user_have_emojis,
 	util::{get_name, parse_emoji_input},
 };

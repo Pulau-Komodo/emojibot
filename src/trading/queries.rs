@@ -1,7 +1,7 @@
 use serenity::model::prelude::UserId;
 use sqlx::{query, Executor, Pool, Sqlite, Transaction};
 
-use crate::emojis::{Emoji, EmojiMap};
+use crate::emoji::{Emoji, EmojiMap};
 
 use super::trade_offer::TradeOffer;
 

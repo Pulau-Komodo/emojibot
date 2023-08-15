@@ -7,7 +7,7 @@ use serenity::{
 };
 use sqlx::{Pool, Sqlite};
 
-use crate::{emojis::EmojiMap, util::interaction_reply};
+use crate::{emoji::EmojiMap, util::interaction_reply};
 
 use super::{try_accept_offer, try_cancel_offer, try_offer_trade, try_reject_offer, view_offers};
 
