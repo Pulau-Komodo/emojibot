@@ -345,7 +345,10 @@ async fn try_confirm_trade(
 			"The offer from {offerer_name} was changed while you were accepting it, so the trade was cancelled."
 		));
 	}
+
 	complete_trade(executor, &trade_offer).await;
+	remove_invalidated_trade_offers(executor, &trade_offer).await;
+
 	let mut output = String::new();
 	write!(output, "{accepter_name} successfully traded away ").unwrap();
 	trade.write_request(&mut output);

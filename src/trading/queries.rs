@@ -343,3 +343,35 @@ async fn transfer_emoji(
 	.await
 	.unwrap();
 }
+
+/// Removes trade offers where the offering user no longer has the emojis to complete their end of the trade.
+///
+/// To be run after a trade completes.
+pub(super) async fn remove_invalidated_trade_offers(
+	executor: &Pool<Sqlite>,
+	trade_offer: &TradeOffer,
+) {
+	let user_one = trade_offer.offering_user().0 as i64;
+	let user_two = trade_offer.target_user().0 as i64;
+	query!(
+		"
+		DELETE FROM trade_offers
+		WHERE (user = ? OR user = ?) AND id IN (
+			SELECT trade
+			FROM trade_offer_contents
+			LEFT JOIN (
+				SELECT user, emoji, count
+				FROM emoji_inventory
+				WHERE user = trade_offers.user
+			) as filtered_inventory
+				ON trade_offer_contents.emoji = filtered_inventory.emoji
+			WHERE IFNULL(filtered_inventory.count, 0) < -trade_offer_contents.count
+		)
+	",
+		user_one,
+		user_two
+	)
+	.execute(executor)
+	.await
+	.unwrap();
+}
