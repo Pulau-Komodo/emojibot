@@ -33,7 +33,7 @@ impl EventHandler for DiscordEventHandler {
 		if let Interaction::ApplicationCommand(interaction) = interaction {
 			match interaction.data.name.as_str() {
 				"inventory" => {
-					inventory::command(&self.database, &self.emoji_map, context, interaction).await;
+					inventory::view::execute(&self.database, &self.emoji_map, context, interaction).await;
 				}
 				"who" => {
 					find_emoji::execute(&self.database, &self.emoji_map, context, interaction)
@@ -81,7 +81,7 @@ impl EventHandler for DiscordEventHandler {
 					let commands = guild
 						.set_application_commands(&context.http, |commands| {
 							commands
-								.create_application_command(inventory::register)
+								.create_application_command(inventory::view::register)
 								.create_application_command(find_emoji::register)
 								.create_application_command(trading::command::register)
 								.create_application_command(user_settings::private::register)

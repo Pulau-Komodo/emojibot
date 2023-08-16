@@ -17,7 +17,7 @@ use crate::{
 	util::{get_name, interaction_reply},
 };
 
-pub async fn command(
+pub async fn execute(
 	database: &Pool<Sqlite>,
 	emoji_map: &EmojiMap,
 	context: Context,
