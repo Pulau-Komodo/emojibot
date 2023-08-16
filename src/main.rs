@@ -9,11 +9,13 @@ mod daily_emoji;
 mod discord_events;
 mod emoji;
 mod emoji_list;
+mod find_emoji;
 mod images;
 mod inventory;
 mod queries;
 mod special_characters;
 mod trading;
+mod user_settings;
 mod util;
 
 #[tokio::main]

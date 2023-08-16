@@ -1,5 +1,5 @@
 --
--- File generated with SQLiteStudio v3.4.4 on Thu Aug 3 02:03:38 2023
+-- File generated with SQLiteStudio v3.4.4 on Wed Aug 16 14:40:34 2023
 --
 -- Text encoding used: System
 --
@@ -23,6 +23,9 @@ CREATE TABLE IF NOT EXISTS trade_offer_contents (trade INTEGER REFERENCES trade_
 
 -- Table: trade_offers
 CREATE TABLE IF NOT EXISTS trade_offers (id INTEGER PRIMARY KEY NOT NULL, user INTEGER NOT NULL, target_user INTEGER NOT NULL, time DATETIME DEFAULT (datetime()) NOT NULL);
+
+-- Table: user_settings
+CREATE TABLE IF NOT EXISTS user_settings (user INTEGER PRIMARY KEY, private INTEGER CHECK (private == 0 || private == 1) NOT NULL DEFAULT (0));
 
 -- Index: 
 CREATE UNIQUE INDEX IF NOT EXISTS "" ON trade_offers (user, target_user);

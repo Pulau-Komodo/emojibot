@@ -13,6 +13,7 @@ use crate::{
 	emoji::EmojiMap,
 	queries::get_user_emojis,
 	special_characters::ZWNJ,
+	user_settings::private::is_private,
 	util::{get_name, interaction_reply},
 };
 
@@ -35,6 +36,7 @@ pub async fn command(
 			.unwrap();
 		UserId(id.parse().unwrap())
 	};
+
 	let is_public = if targets_own {
 		subcommand.options.get(0)
 	} else {
@@ -47,6 +49,17 @@ pub async fn command(
 	} else {
 		None
 	};
+
+	if !targets_own && is_private(database, target).await {
+		let _ = interaction_reply(
+			context,
+			interaction,
+			format!("{}'s inventory is set to private.", name.unwrap()),
+			!is_public,
+		)
+		.await;
+		return;
+	}
 
 	let emojis = get_user_emojis(database, emoji_map, target).await;
 	if emojis.is_empty() {

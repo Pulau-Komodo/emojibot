@@ -4,7 +4,7 @@ use serenity::{
 };
 use sqlx::{query, Pool, Sqlite};
 
-use crate::emoji::Emoji;
+use crate::{emoji::Emoji, user_settings::private::is_private};
 
 async fn seen_today(database: &Pool<Sqlite>, user: UserId) -> bool {
 	let user_id = *user.as_u64() as i64;
@@ -66,7 +66,9 @@ async fn give_emoji(database: &Pool<Sqlite>, user: UserId, emoji: Emoji) {
 pub async fn maybe_give_daily_emoji(database: &Pool<Sqlite>, context: Context, message: Message) {
 	if !seen_today(database, message.author.id).await {
 		let emoji = Emoji::random();
-		let _ = message.react(context, emoji).await;
 		give_emoji(database, message.author.id, emoji).await;
+		if !is_private(database, message.author.id).await {
+			let _ = message.react(context, emoji).await;
+		}
 	}
 }

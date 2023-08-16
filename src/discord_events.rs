@@ -2,7 +2,10 @@ use itertools::Itertools;
 use serenity::{async_trait, model::prelude::*, prelude::*};
 use sqlx::{Pool, Sqlite};
 
-use crate::{daily_emoji::maybe_give_daily_emoji, emoji::EmojiMap, images, inventory, trading};
+use crate::{
+	daily_emoji::maybe_give_daily_emoji, emoji::EmojiMap, find_emoji, images, inventory, trading,
+	user_settings,
+};
 
 pub struct DiscordEventHandler {
 	database: Pool<Sqlite>,
@@ -32,8 +35,12 @@ impl EventHandler for DiscordEventHandler {
 				"inventory" => {
 					inventory::command(&self.database, &self.emoji_map, context, interaction).await;
 				}
-				"image" => {
-					images::command_make_raster_image(
+				"who" => {
+					find_emoji::execute(&self.database, &self.emoji_map, context, interaction)
+						.await;
+				}
+				"trade" => {
+					trading::command::execute(
 						&self.database,
 						&self.emoji_map,
 						context,
@@ -41,8 +48,11 @@ impl EventHandler for DiscordEventHandler {
 					)
 					.await;
 				}
-				"trade" => {
-					trading::command::execute(
+				"private" => {
+					user_settings::private::execute(&self.database, context, interaction).await;
+				}
+				"image" => {
+					images::command_make_raster_image(
 						&self.database,
 						&self.emoji_map,
 						context,
@@ -71,19 +81,13 @@ impl EventHandler for DiscordEventHandler {
 					let commands = guild
 						.set_application_commands(&context.http, |commands| {
 							commands
-								.create_application_command(|command| inventory::register(command))
-								.create_application_command(|command| {
-									images::register_make_raster_image(command)
-								})
-								.create_application_command(|command| {
-									trading::command::register(command)
-								})
-								.create_application_command(|command| {
-									images::register_generate(command)
-								})
-								.create_application_command(|command| {
-									images::register_test_image(command)
-								})
+								.create_application_command(inventory::register)
+								.create_application_command(find_emoji::register)
+								.create_application_command(trading::command::register)
+								.create_application_command(user_settings::private::register)
+								.create_application_command(images::register_make_raster_image)
+								.create_application_command(images::register_generate)
+								.create_application_command(images::register_test_image)
 						})
 						.await
 						.unwrap();
