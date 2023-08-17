@@ -14,10 +14,8 @@ async fn seen_today(database: &Pool<Sqlite>, user: UserId) -> bool {
 			WHEN date >= date() THEN true
 			ELSE false
 			END seen_today
-		FROM
-			last_seen
-		WHERE
-			user = ?
+		FROM last_seen
+		WHERE user = ?
 		",
 		user_id
 	)
@@ -29,10 +27,8 @@ async fn seen_today(database: &Pool<Sqlite>, user: UserId) -> bool {
 	if !seen {
 		query!(
 			"
-			INSERT INTO
-				last_seen (user)
-			VALUES
-				(?)
+			INSERT INTO last_seen (user)
+			VALUES (?)
 			",
 			user_id
 		)
@@ -48,12 +44,8 @@ async fn give_emoji(database: &Pool<Sqlite>, user: UserId, emoji: Emoji) {
 	let emoji = emoji.as_str();
 	query!(
 		"
-		INSERT INTO
-			emoji_inventory (user, emoji)
-		VALUES
-			(?, ?)
-		ON CONFLICT DO UPDATE SET
-			count = count + 1
+		INSERT INTO emoji_inventory (user, emoji)
+		VALUES (?, ?)
 		",
 		user_id,
 		emoji

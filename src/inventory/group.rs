@@ -1,6 +1,5 @@
 use std::fmt::Write;
 
-use itertools::Itertools;
 use serenity::{
 	builder::CreateApplicationCommand,
 	model::prelude::{
@@ -14,8 +13,7 @@ use sqlx::{query, Pool, Sqlite, Transaction};
 
 use crate::{
 	emoji::{Emoji, EmojiMap},
-	special_characters::ZWNJ,
-	util::{ephemeral_reply, get_and_parse_emoji_option},
+	util::{ephemeral_reply, get_and_parse_emoji_option, write_emojis},
 };
 
 pub async fn remove_empty_groups(executor: &mut Transaction<'_, Sqlite>, user: UserId) {
@@ -42,7 +40,7 @@ async fn close_ordering_gaps(executor: &mut Transaction<'_, Sqlite>, user: UserI
 		SELECT name
 		FROM emoji_inventory_groups
 		WHERE user = ?
-		ORDER BY sort_order
+		ORDER BY sort_order ASC
 		",
 		user_id
 	)
@@ -73,8 +71,8 @@ async fn add_to_group(
 	executor: &Pool<Sqlite>,
 	user: UserId,
 	group_name: &str,
-	emojis: &Vec<Emoji>,
-) -> (String, Vec<Emoji>) {
+	emojis: &Vec<(Emoji, i64)>,
+) -> (String, Vec<(Emoji, i64)>) {
 	let user_id = user.0 as i64;
 	let mut transaction = executor.begin().await.unwrap();
 	let group_count = query!(
@@ -110,24 +108,35 @@ async fn add_to_group(
 
 	let group_id = group.id;
 	let mut added_emojis = Vec::with_capacity(emojis.len());
-	for emoji in emojis {
+	for (emoji, count) in emojis {
 		let emoji_str = emoji.as_str();
 		let rows_affected = query!(
 			"
 			UPDATE emoji_inventory
 			SET group_id = ?
-			WHERE user = ? AND emoji = ?
+			WHERE user = ? AND emoji = ? AND rowid IN (
+				SELECT emoji_inventory.rowid
+				FROM emoji_inventory
+				LEFT JOIN emoji_inventory_groups
+				ON emoji_inventory.group_id = emoji_inventory_groups.id
+				WHERE emoji_inventory.user = ? AND emoji_inventory.emoji = ?
+				ORDER BY IFNULL(sort_order, 9223372036854775807) DESC
+				LIMIT ?
+			)
 			",
 			group_id,
 			user_id,
-			emoji_str
+			emoji_str,
+			user_id,
+			emoji_str,
+			*count
 		)
 		.execute(&mut *transaction)
 		.await
 		.unwrap()
 		.rows_affected();
 		if rows_affected > 0 {
-			added_emojis.push(*emoji);
+			added_emojis.push((*emoji, rows_affected as i64));
 		}
 	}
 
@@ -141,30 +150,40 @@ async fn add_to_group(
 async fn remove_from_group(
 	executor: &Pool<Sqlite>,
 	user: UserId,
-	emojis: &Vec<Emoji>,
-) -> Vec<Emoji> {
+	emojis: &Vec<(Emoji, i64)>,
+) -> Vec<(Emoji, i64)> {
 	let user_id = user.0 as i64;
 	let mut degrouped_emojis = Vec::new();
 
 	let mut transaction = executor.begin().await.unwrap();
-	for emoji in emojis {
+	for (emoji, count) in emojis {
 		let emoji_str = emoji.as_str();
-		let was_degrouped = query!(
+		let rows_affected = query!(
 			"
 			UPDATE emoji_inventory
-			SET group_id = null
-			WHERE user = ? AND emoji = ?
+			SET group_id = NULL
+			WHERE user = ? AND emoji = ? AND emoji_inventory.group_id IS NOT NULL AND rowid IN (
+				SELECT emoji_inventory.rowid
+				FROM emoji_inventory
+				LEFT JOIN emoji_inventory_groups
+				ON emoji_inventory.group_id = emoji_inventory_groups.id
+				WHERE emoji_inventory.user = ? AND emoji_inventory.emoji = ? AND emoji_inventory.group_id IS NOT NULL
+				ORDER BY sort_order DESC
+				LIMIT ?
+			)
 			",
 			user_id,
-			emoji_str
+			emoji_str,
+			user_id,
+			emoji_str,
+			count
 		)
 		.execute(&mut *transaction)
 		.await
 		.unwrap()
-		.rows_affected()
-			> 0;
-		if was_degrouped {
-			degrouped_emojis.push(*emoji);
+		.rows_affected();
+		if rows_affected > 0 {
+			degrouped_emojis.push((*emoji, rows_affected as i64));
 		}
 	}
 
@@ -223,7 +242,7 @@ async fn add(
 		.and_then(|value| value.as_str())
 		.unwrap();
 
-	let emojis = match get_and_parse_emoji_option(emoji_map, &options, 1) {
+	let mut emojis = match get_and_parse_emoji_option(emoji_map, &options, 1) {
 		Ok(emojis) => emojis,
 		Err(error) => {
 			let _ = ephemeral_reply(context, interaction, error).await;
@@ -231,17 +250,7 @@ async fn add(
 		}
 	};
 
-	let mut had_duplicates = false;
-	let mut emojis = emojis
-		.into_iter()
-		.map(|(emoji, count)| {
-			if count > 1 {
-				had_duplicates = true;
-			}
-			emoji
-		})
-		.collect::<Vec<_>>();
-	emojis.sort_unstable();
+	emojis.sort_unstable_by_key(|(emoji, _)| *emoji);
 
 	let (group_name, added_emojis) =
 		add_to_group(database, interaction.user.id, group_name, &emojis).await;
@@ -258,18 +267,14 @@ async fn add(
 
 	let dropped_emojis = emojis.len() - added_emojis.len();
 
-	let emoji_text = Itertools::intersperse(added_emojis.iter().map(|emoji| emoji.as_str()), ZWNJ)
-		.collect::<String>();
-
-	let mut message = format!("Added {} to {}.", emoji_text, group_name);
+	let mut message = String::from("Added ");
+	write_emojis(&mut message, &added_emojis);
+	write!(message, " to {}.", group_name).unwrap();
 
 	match dropped_emojis {
 		0 => (),
 		1 => message.push_str(" You did not have the other one."),
 		n => write!(message, " You did not have the other {}.", n).unwrap(),
-	}
-	if had_duplicates {
-		message.push_str(" (Duplicates were ignored, as multiples of the same emoji can't be in different groups.)");
 	}
 
 	let _ = ephemeral_reply(context, interaction, message).await;
@@ -282,7 +287,7 @@ async fn remove(
 	interaction: ApplicationCommandInteraction,
 	options: Vec<CommandDataOption>,
 ) {
-	let emojis = match get_and_parse_emoji_option(emoji_map, &options, 0) {
+	let mut emojis = match get_and_parse_emoji_option(emoji_map, &options, 0) {
 		Ok(emojis) => emojis,
 		Err(error) => {
 			let _ = ephemeral_reply(context, interaction, error).await;
@@ -290,17 +295,7 @@ async fn remove(
 		}
 	};
 
-	let mut had_duplicates = false;
-	let mut emojis = emojis
-		.into_iter()
-		.map(|(emoji, count)| {
-			if count > 1 {
-				had_duplicates = true;
-			}
-			emoji
-		})
-		.collect::<Vec<_>>();
-	emojis.sort_unstable();
+	emojis.sort_unstable_by_key(|(emoji, _)| *emoji);
 
 	let degrouped_emojis = remove_from_group(database, interaction.user.id, &emojis).await;
 
@@ -316,19 +311,19 @@ async fn remove(
 
 	let skipped_emojis = emojis.len() - degrouped_emojis.len();
 
-	let emoji_text =
-		Itertools::intersperse(degrouped_emojis.iter().map(|emoji| emoji.as_str()), ZWNJ)
-			.collect::<String>();
-
-	let mut message = format!("{} are now ungrouped.", emoji_text);
+	let mut message = String::new();
+	write_emojis(&mut message, &degrouped_emojis);
+	if degrouped_emojis.len() == 1 {
+		message.push_str(" is");
+	} else {
+		message.push_str(" are");
+	}
+	message.push_str(" now ungrouped.");
 
 	match skipped_emojis {
 		0 => (),
 		1 => message.push_str(" You did not have the other one."),
 		n => write!(message, " You did not have the other {}.", n).unwrap(),
-	}
-	if had_duplicates {
-		message.push_str(" (Duplicates were ignored, as multiples of the same emoji can't be in different groups.)");
 	}
 
 	let _ = ephemeral_reply(context, interaction, message).await;

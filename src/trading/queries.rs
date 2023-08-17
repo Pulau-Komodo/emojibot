@@ -251,23 +251,6 @@ pub(super) async fn complete_trade(executor: &Pool<Sqlite>, trade_offer: &TradeO
 		.await;
 	}
 
-	// Clean up count = 0 emojis
-	let user_one = trade_offer.offering_user().0 as i64;
-	let user_two = trade_offer.target_user().0 as i64;
-	query!(
-		"
-		DELETE FROM
-			emoji_inventory
-		WHERE
-			(user = ? OR user = ?) AND count = 0
-		",
-		user_one,
-		user_two
-	)
-	.execute(&mut *transaction)
-	.await
-	.unwrap();
-
 	remove_empty_groups(&mut transaction, trade_offer.offering_user()).await;
 	remove_empty_groups(&mut transaction, trade_offer.target_user()).await;
 
@@ -322,32 +305,23 @@ async fn transfer_emoji(
 	let to_id = to.0 as i64;
 	query!(
 		"
-		UPDATE
-			emoji_inventory
-		SET
-			count = count - ?
-		WHERE
-			user = ? AND emoji = ?
-		",
-		count,
-		from_id,
-		emoji
-	)
-	.execute(&mut **transaction)
-	.await
-	.unwrap();
-	query!(
-		"
-		INSERT INTO
-			emoji_inventory (user, emoji, count)
-		VALUES
-			(?, ?, ?)
-		ON CONFLICT DO UPDATE SET
-			count = count + excluded.count
+		UPDATE emoji_inventory
+		SET user = ?, group_id = NULL
+		WHERE user = ? AND rowid IN (
+			SELECT emoji_inventory.rowid
+			FROM emoji_inventory
+			LEFT JOIN emoji_inventory_groups
+			ON emoji_inventory.group_id = emoji_inventory_groups.id
+			WHERE emoji_inventory.user = ? AND emoji_inventory.emoji = ?
+			ORDER BY sort_order ASC
+			LIMIT ?
+		)
 		",
 		to_id,
+		from_id,
+		from_id,
 		emoji,
-		count
+		count,
 	)
 	.execute(&mut **transaction)
 	.await
@@ -357,31 +331,72 @@ async fn transfer_emoji(
 /// Removes trade offers where the offering user no longer has the emojis to complete their end of the trade.
 ///
 /// To be run after a trade completes.
+///
+/// This could all be a single query but I don't know how to write it.
 pub(super) async fn remove_invalidated_trade_offers(
 	executor: &Pool<Sqlite>,
 	trade_offer: &TradeOffer,
 ) {
 	let user_one = trade_offer.offering_user().0 as i64;
 	let user_two = trade_offer.target_user().0 as i64;
-	query!(
-		"
-		DELETE FROM trade_offers
-		WHERE (user = ? OR user = ?) AND id IN (
-			SELECT trade
-			FROM trade_offer_contents
-			LEFT JOIN (
-				SELECT user, emoji, count
-				FROM emoji_inventory
-				WHERE user = trade_offers.user
-			) as filtered_inventory
-				ON trade_offer_contents.emoji = filtered_inventory.emoji
-			WHERE IFNULL(filtered_inventory.count, 0) < -trade_offer_contents.count
+
+	let mut transaction = executor.begin().await.unwrap();
+
+	for user in [user_one, user_two] {
+		let trade_offers = query!(
+			"
+			SELECT id
+			FROM trade_offers
+			WHERE user = ?
+		",
+			user
 		)
-	",
-		user_one,
-		user_two
-	)
-	.execute(executor)
-	.await
-	.unwrap();
+		.fetch_all(&mut *transaction)
+		.await
+		.unwrap();
+		for trade_offer in trade_offers {
+			let trade_id = trade_offer.id;
+			let emojis = query!(
+				"
+				SELECT emoji, count
+				FROM trade_offer_contents
+				WHERE trade = ?
+				",
+				trade_id
+			)
+			.fetch_all(&mut *transaction)
+			.await
+			.unwrap();
+			for emoji_record in emojis {
+				let emoji = emoji_record.emoji;
+				let count = query!(
+					"
+					SELECT COUNT(*) as count
+					FROM emoji_inventory
+					WHERE user = ? AND emoji = ?
+					",
+					user,
+					emoji
+				)
+				.fetch_one(&mut *transaction)
+				.await
+				.unwrap()
+				.count;
+				if count < emoji_record.count as i32 {
+					query!(
+						"
+						DELETE FROM trade_offers
+						WHERE id = ?
+						",
+						trade_id
+					)
+					.execute(&mut *transaction)
+					.await
+					.unwrap();
+				}
+			}
+		}
+	}
+
+	transaction.commit().await.unwrap();
 }

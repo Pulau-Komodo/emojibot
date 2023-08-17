@@ -1,4 +1,4 @@
-use std::{borrow::Cow, fmt::Write};
+use std::borrow::Cow;
 
 use serenity::{
 	builder::CreateApplicationCommand,
@@ -12,9 +12,8 @@ use sqlx::{Pool, Sqlite};
 use crate::{
 	emoji::EmojiMap,
 	queries::get_user_emojis_grouped,
-	special_characters::ZWNJ,
 	user_settings::private::is_private,
-	util::{get_name, interaction_reply},
+	util::{get_name, interaction_reply, write_emojis},
 };
 
 pub async fn execute(
@@ -84,14 +83,7 @@ pub async fn execute(
 		if index != last_group {
 			output.push('[');
 		}
-		for (emoji, count) in emojis {
-			output.push_str(emoji.as_str());
-			if count > 1 {
-				write!(output, "x{count}").unwrap();
-			} else {
-				output.push_str(ZWNJ); // To avoid some emojis combining inappropriately.
-			}
-		}
+		write_emojis(&mut output, &emojis);
 		if index != last_group {
 			output.push(']');
 		}

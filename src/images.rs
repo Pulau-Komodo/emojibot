@@ -33,7 +33,7 @@ async fn has_emoji(executor: &Pool<Sqlite>, emoji: Emoji, user: UserId) -> bool 
 	query!(
 		"
 		SELECT
-			count
+			COUNT(*) AS count
 		FROM
 			emoji_inventory
 		WHERE

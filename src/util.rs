@@ -1,4 +1,8 @@
-use std::{borrow::Cow, collections::HashMap, fmt::Display};
+use std::{
+	borrow::Cow,
+	collections::HashMap,
+	fmt::{Display, Write},
+};
 
 use serenity::{
 	model::prelude::{
@@ -93,6 +97,17 @@ pub fn get_and_parse_emoji_option(
 		Err("You did not specify any emojis.")?;
 	}
 	Ok(emojis)
+}
+
+pub fn write_emojis(string: &mut String, emojis: &[(Emoji, i64)]) {
+	for (emoji, count) in emojis {
+		string.push_str(emoji.as_str());
+		if *count > 1 {
+			write!(string, "x{count}").unwrap();
+		} else {
+			string.push_str(ZWNJ); // To avoid some emojis combining inappropriately.
+		}
+	}
 }
 
 #[cfg(test)]

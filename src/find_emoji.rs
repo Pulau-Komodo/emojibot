@@ -18,11 +18,12 @@ async fn find_emoji_users(executor: &Pool<Sqlite>, emoji: Emoji) -> Vec<(UserId,
 	let emoji = emoji.as_str();
 	let result = query!(
 		"
-		SELECT emoji_inventory.user, count
+		SELECT emoji_inventory.user, COUNT(*) as count
 		FROM emoji_inventory
 			LEFT JOIN user_settings
 			ON emoji_inventory.user = user_settings.user
 		WHERE IFNULL(private, 0) = 0 AND emoji = ?
+		GROUP BY emoji_inventory.user, emoji
 		",
 		emoji
 	)

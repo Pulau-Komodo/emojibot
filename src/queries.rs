@@ -17,13 +17,10 @@ pub(crate) async fn does_user_have_emojis(
 		let emoji = emoji.as_str();
 		let count = query!(
 			"
-				SELECT
-					count
-				FROM
-					emoji_inventory
-				WHERE
-					user = ? AND emoji = ?
-				",
+			SELECT COUNT(*) AS count
+			FROM emoji_inventory
+			WHERE user = ? AND emoji = ?
+			",
 			user_id,
 			emoji
 		)
@@ -32,7 +29,7 @@ pub(crate) async fn does_user_have_emojis(
 		.unwrap()
 		.map(|record| record.count)
 		.unwrap_or(0);
-		if count < *target_count {
+		if (count as i64) < *target_count {
 			transaction.commit().await.unwrap();
 			return false;
 		}
@@ -49,12 +46,10 @@ pub async fn get_user_emojis(
 	let user_id = *user.as_u64() as i64;
 	let mut emojis = query!(
 		"
-		SELECT
-			emoji, count
-		FROM
-			emoji_inventory
-		WHERE
-			user = ?
+		SELECT emoji, COUNT(*) AS count
+		FROM emoji_inventory
+		WHERE user = ?
+		GROUP BY emoji
 		",
 		user_id
 	)
@@ -80,14 +75,15 @@ pub async fn get_user_emojis_grouped(
 	emoji_map: &EmojiMap,
 	user: UserId,
 ) -> Vec<Vec<(Emoji, i64)>> {
-	let user_id = *user.as_u64() as i64;
+	let user_id = user.0 as i64;
 	let records = query!(
 		"
-		SELECT emoji, count, sort_order
+		SELECT emoji, COUNT(*) AS count, sort_order
 		FROM emoji_inventory
 		LEFT JOIN emoji_inventory_groups
 		ON emoji_inventory.group_id = emoji_inventory_groups.id
 		WHERE emoji_inventory.user = ?
+		GROUP BY emoji_inventory.user, emoji, group_id
 		",
 		user_id
 	)
