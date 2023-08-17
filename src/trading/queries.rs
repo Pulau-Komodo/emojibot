@@ -1,7 +1,10 @@
 use serenity::model::prelude::UserId;
 use sqlx::{query, Executor, Pool, Sqlite, Transaction};
 
-use crate::emoji::{Emoji, EmojiMap};
+use crate::{
+	emoji::{Emoji, EmojiMap},
+	inventory::group::remove_empty_groups,
+};
 
 use super::trade_offer::TradeOffer;
 
@@ -249,17 +252,24 @@ pub(super) async fn complete_trade(executor: &Pool<Sqlite>, trade_offer: &TradeO
 	}
 
 	// Clean up count = 0 emojis
+	let user_one = trade_offer.offering_user().0 as i64;
+	let user_two = trade_offer.target_user().0 as i64;
 	query!(
 		"
 		DELETE FROM
 			emoji_inventory
 		WHERE
-			count = 0
-		"
+			(user = ? OR user = ?) AND count = 0
+		",
+		user_one,
+		user_two
 	)
 	.execute(&mut *transaction)
 	.await
 	.unwrap();
+
+	remove_empty_groups(&mut transaction, trade_offer.offering_user()).await;
+	remove_empty_groups(&mut transaction, trade_offer.target_user()).await;
 
 	transaction.commit().await.unwrap();
 }

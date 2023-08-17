@@ -1,9 +1,9 @@
-use std::{collections::HashMap, fmt::Display};
+use std::{borrow::Cow, collections::HashMap, fmt::Display};
 
 use serenity::{
 	model::prelude::{
-		application_command::ApplicationCommandInteraction, GuildId, InteractionResponseType,
-		UserId,
+		application_command::{ApplicationCommandInteraction, CommandDataOption},
+		GuildId, InteractionResponseType, UserId,
 	},
 	prelude::Context,
 	Result as SerenityResult,
@@ -31,6 +31,17 @@ where
 				.interaction_response_data(|message| message.content(content).ephemeral(ephemeral))
 		})
 		.await
+}
+
+pub async fn ephemeral_reply<S>(
+	context: Context,
+	interaction: ApplicationCommandInteraction,
+	content: S,
+) -> SerenityResult<()>
+where
+	S: Display,
+{
+	interaction_reply(context, interaction, content, true).await
 }
 
 /// Gives nickname if possible, otherwise display name, otherwise ID as a string.
@@ -62,6 +73,26 @@ pub fn parse_emoji_input(emoji_map: &EmojiMap, input: &str) -> Result<Vec<(Emoji
 		*emojis.entry(emoji).or_insert(0) += 1;
 	}
 	Ok(emojis.into_iter().collect())
+}
+
+/// Gets the emojis from a specified option index and ensures there is at least one emoji, otherwise returns a user-friendly error string.
+pub fn get_and_parse_emoji_option(
+	emoji_map: &EmojiMap,
+	options: &[CommandDataOption],
+	index: usize,
+) -> Result<Vec<(Emoji, i64)>, Cow<'static, str>> {
+	let input = options
+		.get(index)
+		.and_then(|option| option.value.as_ref())
+		.and_then(|value| value.as_str())
+		.ok_or("Emojis argument not supplied.")?;
+
+	let emojis = parse_emoji_input(emoji_map, input)?;
+
+	if emojis.is_empty() {
+		Err("You did not specify any emojis.")?;
+	}
+	Ok(emojis)
 }
 
 #[cfg(test)]

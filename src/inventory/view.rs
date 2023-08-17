@@ -11,7 +11,7 @@ use sqlx::{Pool, Sqlite};
 
 use crate::{
 	emoji::EmojiMap,
-	queries::get_user_emojis,
+	queries::get_user_emojis_grouped,
 	special_characters::ZWNJ,
 	user_settings::private::is_private,
 	util::{get_name, interaction_reply},
@@ -61,8 +61,9 @@ pub async fn execute(
 		return;
 	}
 
-	let emojis = get_user_emojis(database, emoji_map, target).await;
-	if emojis.is_empty() {
+	let groups = get_user_emojis_grouped(database, emoji_map, target).await;
+	let emoji_count = groups.iter().fold(0, |acc, group| acc + group.len());
+	if emoji_count == 0 {
 		let message = name
 			.map(|name| Cow::from(format!("{name} has no emojis. 🤔")))
 			.unwrap_or_else(|| Cow::from("You have no emojis. 🤔"));
@@ -71,21 +72,31 @@ pub async fn execute(
 			.unwrap();
 		return;
 	}
-	let mut output = match (emojis.len(), name) {
+	let mut output = match (emoji_count, name) {
 		(1, Some(name)) => format!("{name} only has "),
 		(1, None) => String::from("You only have "),
 		(_, Some(name)) => format!("{name} has the following emojis: "),
 		(_, None) => String::from("You have the following emojis: "),
 	};
 
-	for (emoji, count) in emojis {
-		output.push_str(emoji.as_str());
-		if count > 1 {
-			write!(output, "x{count}").unwrap();
-		} else {
-			output.push_str(ZWNJ); // To avoid some emojis combining inappropriately.
+	let last_group = groups.len() - 1;
+	for (index, emojis) in groups.into_iter().enumerate() {
+		if index != last_group {
+			output.push('[');
+		}
+		for (emoji, count) in emojis {
+			output.push_str(emoji.as_str());
+			if count > 1 {
+				write!(output, "x{count}").unwrap();
+			} else {
+				output.push_str(ZWNJ); // To avoid some emojis combining inappropriately.
+			}
+		}
+		if index != last_group {
+			output.push(']');
 		}
 	}
+
 	output.push('.');
 	interaction_reply(context, interaction, output, !is_public)
 		.await

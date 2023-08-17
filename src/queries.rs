@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use serenity::model::prelude::UserId;
 use sqlx::{query, Pool, Sqlite};
 
@@ -71,4 +73,45 @@ pub async fn get_user_emojis(
 	.collect::<Vec<_>>();
 	emojis.sort_unstable();
 	emojis
+}
+
+pub async fn get_user_emojis_grouped(
+	database: &Pool<Sqlite>,
+	emoji_map: &EmojiMap,
+	user: UserId,
+) -> Vec<Vec<(Emoji, i64)>> {
+	let user_id = *user.as_u64() as i64;
+	let records = query!(
+		"
+		SELECT emoji, count, sort_order
+		FROM emoji_inventory
+		LEFT JOIN emoji_inventory_groups
+		ON emoji_inventory.group_id = emoji_inventory_groups.id
+		WHERE emoji_inventory.user = ?
+		",
+		user_id
+	)
+	.fetch_all(database)
+	.await
+	.unwrap();
+
+	let mut emoji_groups = HashMap::<i64, Vec<(Emoji, i64)>>::new();
+	for record in records {
+		let sort_order = record.sort_order.unwrap_or(i64::MAX);
+		if record.count > 0 {
+			let emoji = *emoji_map
+				.get(record.emoji.as_str())
+				.expect("Emoji from database was somehow not in map.");
+			emoji_groups
+				.entry(sort_order)
+				.or_default()
+				.push((emoji, record.count));
+		}
+	}
+	for group in &mut emoji_groups {
+		group.1.sort_unstable();
+	}
+	let mut emoji_groups = emoji_groups.into_iter().collect::<Vec<_>>();
+	emoji_groups.sort_unstable_by_key(|(sort, _)| *sort);
+	emoji_groups.into_iter().map(|(_, emojis)| emojis).collect()
 }
