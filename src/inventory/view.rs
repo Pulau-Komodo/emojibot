@@ -1,4 +1,4 @@
-use std::borrow::Cow;
+use std::{borrow::Cow, fmt::Write};
 
 use serenity::{
 	builder::CreateApplicationCommand,
@@ -13,7 +13,7 @@ use crate::{
 	emoji::EmojiMap,
 	queries::get_user_emojis_grouped,
 	user_settings::private::is_private,
-	util::{get_name, interaction_reply, write_emojis},
+	util::{get_name, interaction_reply},
 };
 
 pub async fn execute(
@@ -60,8 +60,8 @@ pub async fn execute(
 		return;
 	}
 
-	let groups = get_user_emojis_grouped(database, emoji_map, target).await;
-	let emoji_count = groups.iter().fold(0, |acc, group| acc + group.len());
+	let (groups, ungrouped) = get_user_emojis_grouped(database, emoji_map, target).await;
+	let emoji_count = groups.iter().chain(&ungrouped).count();
 	if emoji_count == 0 {
 		let message = name
 			.map(|name| Cow::from(format!("{name} has no emojis. 🤔")))
@@ -78,15 +78,11 @@ pub async fn execute(
 		(_, None) => String::from("You have the following emojis: "),
 	};
 
-	let last_group = groups.len() - 1;
-	for (index, emojis) in groups.into_iter().enumerate() {
-		if index != last_group {
-			output.push('[');
-		}
-		write_emojis(&mut output, &emojis);
-		if index != last_group {
-			output.push(']');
-		}
+	for emojis in groups.into_iter() {
+		output.write_fmt(format_args!("[{}]", emojis)).unwrap();
+	}
+	for emojis in ungrouped.into_iter() {
+		output.write_fmt(format_args!("{}", emojis)).unwrap();
 	}
 
 	output.push('.');

@@ -9,6 +9,7 @@ mod daily_emoji;
 mod discord_events;
 mod emoji;
 mod emoji_list;
+mod emojis_with_counts;
 mod find_emoji;
 mod images;
 mod inventory;

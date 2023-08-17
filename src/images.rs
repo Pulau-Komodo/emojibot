@@ -19,7 +19,7 @@ use sqlx::{query, Pool, Sqlite};
 
 use crate::{
 	emoji::{Emoji, EmojiMap},
-	queries::{does_user_have_emojis, get_user_emojis},
+	emojis_with_counts::EmojisWithCounts,
 	util::{interaction_reply, parse_emoji_input},
 };
 
@@ -111,38 +111,36 @@ fn rotate_randomly(image: &RgbaImage) -> RgbaImage {
 	)
 }
 
-fn place_randomly(canvas: &mut RgbaImage, images: &[(RgbaImage, i64)], count: usize) {
+fn place_randomly(canvas: &mut RgbaImage, images: &[RgbaImage], count: usize) {
 	let mut rng = rand::thread_rng();
 	let canvas_width = canvas.width() as i64;
 	let canvas_height = canvas.height() as i64;
 	let width = EMOJI_SIZE as i64;
 	let height = EMOJI_SIZE as i64;
 	for _ in 0..count {
-		for (image, image_count) in images {
-			for _ in 0..*image_count {
-				let x = rng.gen_range(0..canvas_width);
-				let y = rng.gen_range(0..canvas_height);
-				let image = rotate_randomly(image);
-				let image = image::imageops::resize(
-					&image,
-					EMOJI_SIZE,
-					EMOJI_SIZE,
-					image::imageops::CatmullRom,
-				);
+		for image in images {
+			let x = rng.gen_range(0..canvas_width);
+			let y = rng.gen_range(0..canvas_height);
+			let image = rotate_randomly(image);
+			let image = image::imageops::resize(
+				&image,
+				EMOJI_SIZE,
+				EMOJI_SIZE,
+				image::imageops::CatmullRom,
+			);
+			image::imageops::overlay(canvas, &image, x, y);
+			if x + width > canvas_width {
+				let x = x - canvas_width;
 				image::imageops::overlay(canvas, &image, x, y);
-				if x + width > canvas_width {
-					let x = x - canvas_width;
-					image::imageops::overlay(canvas, &image, x, y);
-				}
-				if y + height > canvas_height {
-					let y = y - canvas_height;
-					image::imageops::overlay(canvas, &image, x, y);
-				}
-				if x + width > canvas_width && y + height > canvas_height {
-					let x = x - canvas_width;
-					let y = y - canvas_height;
-					image::imageops::overlay(canvas, &image, x, y);
-				}
+			}
+			if y + height > canvas_height {
+				let y = y - canvas_height;
+				image::imageops::overlay(canvas, &image, x, y);
+			}
+			if x + width > canvas_width && y + height > canvas_height {
+				let x = x - canvas_width;
+				let y = y - canvas_height;
+				image::imageops::overlay(canvas, &image, x, y);
 			}
 		}
 	}
@@ -170,11 +168,11 @@ pub async fn test_image(
 	};
 
 	let png = {
-		let Some(images) = emojis.into_iter().map(|(emoji, count)| {
+		let Some(images) = emojis.into_iter().map(|emoji| {
 			let svg_data = read_emoji_svg(&emoji)?;
 			let pixmap = svg_to_pixmap(svg_data);
 			let image = pixmap_to_rgba_image(pixmap);
-			Some((add_rotation_margin(image), count))
+			Some(add_rotation_margin(image))
 		}
 		).collect::<Option<Vec<_>>>() else {
 			let _ = interaction_reply(context, interaction, "Some file missing", true).await;
@@ -240,7 +238,11 @@ pub async fn command_generate(
 				return;
 			}
 		};
-		if !does_user_have_emojis(database, interaction.user.id, &emojis).await {
+		let emojis_with_counts = EmojisWithCounts::from_flat(&emojis);
+		if !emojis_with_counts
+			.are_owned_by_user(database, interaction.user.id)
+			.await
+		{
 			let _ = interaction_reply(
 				context,
 				interaction,
@@ -252,14 +254,16 @@ pub async fn command_generate(
 		}
 		emojis
 	} else {
-		get_user_emojis(database, emoji_map, interaction.user.id).await
+		EmojisWithCounts::from_database_for_user(database, emoji_map, interaction.user.id)
+			.await
+			.flatten()
 	};
 
-	let Some(images) = emojis.into_iter().map(|(emoji, count)| {
+	let Some(images) = emojis.into_iter().map(|emoji| {
 		let svg_data = read_emoji_svg(&emoji)?;
 		let pixmap = svg_to_pixmap(svg_data);
 		let image = pixmap_to_rgba_image(pixmap);
-		Some((add_rotation_margin(image), count))
+		Some(add_rotation_margin(image))
 	}
 	).collect::<Option<Vec<_>>>() else {
 		let _ = interaction_reply(context, interaction, "Some file missing.", true).await;

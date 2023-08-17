@@ -11,7 +11,7 @@ use super::trade_offer::TradeOffer;
 pub(super) async fn add_trade_offer(executor: &Pool<Sqlite>, trade_offer: TradeOffer) {
 	let user_id = trade_offer.offering_user().0 as i64;
 	let target_user_id = trade_offer.target_user().0 as i64;
-	let emojis = trade_offer.flatten();
+	let emojis = trade_offer.to_database_format();
 
 	let mut transaction = executor.begin().await.unwrap();
 	let trade_id = query!(
@@ -274,7 +274,7 @@ async fn log_trade(executor: &mut Transaction<'_, Sqlite>, trade_offer: &TradeOf
 	.await
 	.unwrap()
 	.last_insert_rowid();
-	for (emoji, count) in trade_offer.flatten() {
+	for (emoji, count) in trade_offer.to_database_format() {
 		let emoji = emoji.as_str();
 		query!(
 			"
@@ -296,7 +296,7 @@ async fn log_trade(executor: &mut Transaction<'_, Sqlite>, trade_offer: &TradeOf
 async fn transfer_emoji(
 	transaction: &mut Transaction<'_, Sqlite>,
 	emoji: Emoji,
-	count: i64,
+	count: u32,
 	from: UserId,
 	to: UserId,
 ) {

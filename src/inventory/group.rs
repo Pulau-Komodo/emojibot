@@ -12,8 +12,9 @@ use serenity::{
 use sqlx::{query, Pool, Sqlite, Transaction};
 
 use crate::{
-	emoji::{Emoji, EmojiMap},
-	util::{ephemeral_reply, get_and_parse_emoji_option, write_emojis},
+	emoji::EmojiMap,
+	emojis_with_counts::EmojisWithCounts,
+	util::{ephemeral_reply, get_and_parse_emoji_option},
 };
 
 pub async fn remove_empty_groups(executor: &mut Transaction<'_, Sqlite>, user: UserId) {
@@ -71,8 +72,8 @@ async fn add_to_group(
 	executor: &Pool<Sqlite>,
 	user: UserId,
 	group_name: &str,
-	emojis: &Vec<(Emoji, i64)>,
-) -> (String, Vec<(Emoji, i64)>) {
+	emojis: &EmojisWithCounts,
+) -> (String, EmojisWithCounts) {
 	let user_id = user.0 as i64;
 	let mut transaction = executor.begin().await.unwrap();
 	let group_count = query!(
@@ -107,7 +108,7 @@ async fn add_to_group(
 	.unwrap();
 
 	let group_id = group.id;
-	let mut added_emojis = Vec::with_capacity(emojis.len());
+	let mut added_emojis = Vec::with_capacity(emojis.unique_emoji_count());
 	for (emoji, count) in emojis {
 		let emoji_str = emoji.as_str();
 		let rows_affected = query!(
@@ -136,7 +137,7 @@ async fn add_to_group(
 		.unwrap()
 		.rows_affected();
 		if rows_affected > 0 {
-			added_emojis.push((*emoji, rows_affected as i64));
+			added_emojis.push((*emoji, rows_affected as u32));
 		}
 	}
 
@@ -144,14 +145,15 @@ async fn add_to_group(
 
 	transaction.commit().await.unwrap();
 
-	(group.name, added_emojis)
+	(group.name, EmojisWithCounts::new(added_emojis))
 }
 
 async fn remove_from_group(
 	executor: &Pool<Sqlite>,
 	user: UserId,
-	emojis: &Vec<(Emoji, i64)>,
-) -> Vec<(Emoji, i64)> {
+	emojis: &EmojisWithCounts,
+	group: &str,
+) -> EmojisWithCounts {
 	let user_id = user.0 as i64;
 	let mut degrouped_emojis = Vec::new();
 
@@ -167,7 +169,7 @@ async fn remove_from_group(
 				FROM emoji_inventory
 				LEFT JOIN emoji_inventory_groups
 				ON emoji_inventory.group_id = emoji_inventory_groups.id
-				WHERE emoji_inventory.user = ? AND emoji_inventory.emoji = ? AND emoji_inventory.group_id IS NOT NULL
+				WHERE emoji_inventory.user = ? AND emoji_inventory.emoji = ? AND emoji_inventory_groups.name = ?
 				ORDER BY sort_order DESC
 				LIMIT ?
 			)
@@ -176,6 +178,7 @@ async fn remove_from_group(
 			emoji_str,
 			user_id,
 			emoji_str,
+			group,
 			count
 		)
 		.execute(&mut *transaction)
@@ -183,7 +186,7 @@ async fn remove_from_group(
 		.unwrap()
 		.rows_affected();
 		if rows_affected > 0 {
-			degrouped_emojis.push((*emoji, rows_affected as i64));
+			degrouped_emojis.push((*emoji, rows_affected as u32));
 		}
 	}
 
@@ -191,7 +194,7 @@ async fn remove_from_group(
 
 	transaction.commit().await.unwrap();
 
-	degrouped_emojis
+	EmojisWithCounts::new(degrouped_emojis)
 }
 
 pub async fn execute(
@@ -242,7 +245,7 @@ async fn add(
 		.and_then(|value| value.as_str())
 		.unwrap();
 
-	let mut emojis = match get_and_parse_emoji_option(emoji_map, &options, 1) {
+	let emojis = match get_and_parse_emoji_option(emoji_map, &options, 1) {
 		Ok(emojis) => emojis,
 		Err(error) => {
 			let _ = ephemeral_reply(context, interaction, error).await;
@@ -250,13 +253,14 @@ async fn add(
 		}
 	};
 
-	emojis.sort_unstable_by_key(|(emoji, _)| *emoji);
+	let emojis = EmojisWithCounts::from_flat(&emojis);
+	let emoji_count = emojis.emoji_count();
 
 	let (group_name, added_emojis) =
 		add_to_group(database, interaction.user.id, group_name, &emojis).await;
 
 	if added_emojis.is_empty() {
-		let message = match emojis.len() {
+		let message = match emoji_count {
 			1 => "You do not have that emoji.",
 			2 => "You do not have either of those emojis.",
 			_ => "You did not have any of those emojis.",
@@ -265,11 +269,9 @@ async fn add(
 		return;
 	}
 
-	let dropped_emojis = emojis.len() - added_emojis.len();
+	let dropped_emojis = emoji_count - added_emojis.emoji_count();
 
-	let mut message = String::from("Added ");
-	write_emojis(&mut message, &added_emojis);
-	write!(message, " to {}.", group_name).unwrap();
+	let mut message = format!("Added {} to {}.", added_emojis, group_name);
 
 	match dropped_emojis {
 		0 => (),
@@ -287,7 +289,12 @@ async fn remove(
 	interaction: ApplicationCommandInteraction,
 	options: Vec<CommandDataOption>,
 ) {
-	let mut emojis = match get_and_parse_emoji_option(emoji_map, &options, 0) {
+	let group = options
+		.get(0)
+		.and_then(|option| option.value.as_ref())
+		.and_then(|value| value.as_str())
+		.unwrap();
+	let emojis = match get_and_parse_emoji_option(emoji_map, &options, 1) {
 		Ok(emojis) => emojis,
 		Err(error) => {
 			let _ = ephemeral_reply(context, interaction, error).await;
@@ -295,25 +302,25 @@ async fn remove(
 		}
 	};
 
-	emojis.sort_unstable_by_key(|(emoji, _)| *emoji);
+	let emojis = EmojisWithCounts::from_flat(&emojis);
+	let emoji_count = emojis.emoji_count();
 
-	let degrouped_emojis = remove_from_group(database, interaction.user.id, &emojis).await;
+	let degrouped_emojis = remove_from_group(database, interaction.user.id, &emojis, group).await;
 
 	if degrouped_emojis.is_empty() {
-		let message = match emojis.len() {
-			1 => "You do not have that emoji.",
-			2 => "You do not have either of those emojis.",
-			_ => "You did not have any of those emojis.",
+		let message = match emoji_count {
+			1 => "That emoji is not in that group.",
+			2 => "Neither of those emojis are in that group.",
+			_ => "None of those emojis are in that group.",
 		};
 		let _ = ephemeral_reply(context, interaction, message).await;
 		return;
 	}
 
-	let skipped_emojis = emojis.len() - degrouped_emojis.len();
+	let skipped_emojis = emoji_count - degrouped_emojis.emoji_count();
 
-	let mut message = String::new();
-	write_emojis(&mut message, &degrouped_emojis);
-	if degrouped_emojis.len() == 1 {
+	let mut message = format!("{}", degrouped_emojis);
+	if degrouped_emojis.emoji_count() == 1 {
 		message.push_str(" is");
 	} else {
 		message.push_str(" are");
@@ -322,8 +329,8 @@ async fn remove(
 
 	match skipped_emojis {
 		0 => (),
-		1 => message.push_str(" You did not have the other one."),
-		n => write!(message, " You did not have the other {}.", n).unwrap(),
+		1 => message.push_str(" The other one was not in that group."),
+		n => write!(message, " The other {} were not in that group.", n).unwrap(),
 	}
 
 	let _ = ephemeral_reply(context, interaction, message).await;
@@ -359,6 +366,14 @@ pub fn register(command: &mut CreateApplicationCommand) -> &mut CreateApplicatio
 				.name("remove")
 				.description("Removes emojis from a group.")
 				.kind(CommandOptionType::SubCommand)
+				.create_sub_option(|option| {
+					option
+						.name("group")
+						.description("The group to remove the emojis from.")
+						.kind(CommandOptionType::String)
+						.max_length(50)
+						.required(true)
+				})
 				.create_sub_option(|option| {
 					option
 						.name("emojis")

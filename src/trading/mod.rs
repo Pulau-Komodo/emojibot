@@ -16,8 +16,8 @@ use std::fmt::Write;
 
 use crate::{
 	emoji::EmojiMap,
-	queries::does_user_have_emojis,
-	util::{get_name, parse_emoji_input},
+	emojis_with_counts::EmojisWithCounts,
+	util::{get_and_parse_emoji_option, get_name},
 };
 
 use self::{queries::*, trade_offer::TradeOffer};
@@ -37,39 +37,28 @@ pub(super) async fn try_offer_trade(
 	if does_trade_offer_exist(executor, user, target_user).await {
 		return Err(String::from("You already have a trade offer to that user."));
 	}
-	let offer = parse_emoji_input(
-		emoji_map,
-		options
-			.get(1)
-			.and_then(|option| option.value.as_ref())
-			.and_then(|value| value.as_str())
-			.unwrap(),
-	)?;
+	let offer = get_and_parse_emoji_option(emoji_map, &options, 1)?;
 	if offer.is_empty() {
 		return Err(String::from("Offer is empty."));
 	}
-	let request = parse_emoji_input(
-		emoji_map,
-		options
-			.get(2)
-			.and_then(|option| option.value.as_ref())
-			.and_then(|value| value.as_str())
-			.unwrap(),
-	)?;
+	let request = get_and_parse_emoji_option(emoji_map, &options, 2)?;
 	if request.is_empty() {
 		return Err(String::from("Request is empty."));
 	}
+	let offer = EmojisWithCounts::from_flat(&offer);
+	let request = EmojisWithCounts::from_flat(&request);
 	let trade_offer = TradeOffer::new(user, target_user, offer, request)?;
-	if !does_user_have_emojis(executor, user, trade_offer.offer()).await {
+	if !trade_offer.offer().are_owned_by_user(executor, user).await {
 		return Err(String::from("You don't have those emojis to offer."));
 	}
 
-	let mut output = String::from("You are now offering ");
-	trade_offer.write_offer(&mut output);
 	let name = get_name(context, guild, target_user).await;
-	write!(output, " in return for {}'s ", name).unwrap();
-	trade_offer.write_request(&mut output);
-	output.push('.');
+	let output = format!(
+		"You are now offering {} in return for {}'s {}.",
+		trade_offer.offer(),
+		name,
+		trade_offer.request()
+	);
 
 	add_trade_offer(executor, trade_offer).await;
 
@@ -124,23 +113,29 @@ pub(super) async fn view_offers(
 	if !outgoing.is_empty() {
 		output.push_str("Outgoing:\n");
 		for trade in outgoing {
-			output.push_str("You are offering ");
-			trade.write_offer(&mut output);
 			let name = get_name(context, guild, trade.target_user()).await;
-			write!(output, " for {name}'s ").unwrap();
-			trade.write_request(&mut output);
-			output.push_str(".\n");
+			output
+				.write_fmt(format_args!(
+					"You are offering {} for {}'s {}.\n",
+					trade.offer(),
+					name,
+					trade.request()
+				))
+				.unwrap();
 		}
 	}
 	if !incoming.is_empty() {
 		output.push_str("Incoming:\n");
 		for trade in incoming {
 			let name = get_name(context, guild, trade.offering_user()).await;
-			write!(output, "{name} is offering ").unwrap();
-			trade.write_offer(&mut output);
-			output.push_str(" for your ");
-			trade.write_request(&mut output);
-			output.push_str(".\n");
+			output
+				.write_fmt(format_args!(
+					"{} is offering {} for your {}.\n",
+					name,
+					trade.offer(),
+					trade.request()
+				))
+				.unwrap();
 		}
 	}
 	if output.is_empty() {
@@ -173,13 +168,17 @@ pub(super) async fn try_accept_offer(
 		TradeOfferValidation::Valid(trade) => Ok(trade),
 	}?;
 
-	let s = if trade.request().len() != 1 { "s" } else { "" };
-	let mut content = format!("You are about to accept the trade offer from {offerer_name}.\nYou will **lose** the following emoji{s}: ");
-	trade.write_request(&mut content);
-	let s = if trade.offer().len() != 1 { "s" } else { "" };
-	write!(content, "\nYou will **gain** the following emoji{s}: ").unwrap();
-	trade.write_offer(&mut content);
-	content.push_str("\nDo you want to proceed?");
+	let s1 = if trade.request().emoji_count() != 1 {
+		"s"
+	} else {
+		""
+	};
+	let s2 = if trade.offer().emoji_count() != 1 {
+		"s"
+	} else {
+		""
+	};
+	let content = format!("You are about to accept the trade offer from {offerer_name}.\nYou will **lose** the following emoji{s1}: {}\nYou will **gain** the following emoji{s2}: {}nDo you want to proceed?", trade.request(), trade.offer());
 
 	let _ = interaction
 		.create_interaction_response(&context.http, |interaction| {
@@ -305,10 +304,18 @@ async fn validate_trade_offer(
 	.await else {
 		return TradeOfferValidation::NoTrade;
 	};
-	if !does_user_have_emojis(executor, target_user, trade.request()).await {
+	if !trade
+		.request()
+		.are_owned_by_user(executor, target_user)
+		.await
+	{
 		return TradeOfferValidation::TargetLacksEmojis;
 	}
-	if !does_user_have_emojis(executor, offering_user, trade.offer()).await {
+	if !trade
+		.offer()
+		.are_owned_by_user(executor, offering_user)
+		.await
+	{
 		return TradeOfferValidation::OffererLacksEmojis;
 	}
 	TradeOfferValidation::Valid(trade)
@@ -349,11 +356,10 @@ async fn try_confirm_trade(
 	complete_trade(executor, &trade_offer).await;
 	remove_invalidated_trade_offers(executor, &trade_offer).await;
 
-	let mut output = String::new();
-	write!(output, "{accepter_name} successfully traded away ").unwrap();
-	trade.write_request(&mut output);
-	write!(output, " to {offerer_name} in exchange for ").unwrap();
-	trade.write_offer(&mut output);
-	output.push('.');
+	let output = format!(
+		"{accepter_name} successfully traded away {} to {offerer_name} in exchange for {}.",
+		trade.request(),
+		trade.offer()
+	);
 	Ok(output)
 }

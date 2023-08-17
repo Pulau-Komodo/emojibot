@@ -1,8 +1,4 @@
-use std::{
-	borrow::Cow,
-	collections::HashMap,
-	fmt::{Display, Write},
-};
+use std::{borrow::Cow, fmt::Display};
 
 use serenity::{
 	model::prelude::{
@@ -64,19 +60,23 @@ pub async fn get_name(context: &Context, guild: GuildId, user: UserId) -> String
 	}
 }
 
-pub fn parse_emoji_input(emoji_map: &EmojiMap, input: &str) -> Result<Vec<(Emoji, i64)>, String> {
-	let mut emojis = HashMap::new();
-	for mut grapheme in input.graphemes(true) {
-		if grapheme == " " || grapheme == ZWNJ {
-			continue;
-		}
-		grapheme = grapheme.trim_end_matches(ZWNJ);
-		let emoji = *emoji_map
-			.get(grapheme)
-			.ok_or_else(|| format!("Could not recognize \"{grapheme}\" as an emoji in my list."))?;
-		*emojis.entry(emoji).or_insert(0) += 1;
-	}
-	Ok(emojis.into_iter().collect())
+pub fn parse_emoji_input(emoji_map: &EmojiMap, input: &str) -> Result<Vec<Emoji>, String> {
+	input
+		.graphemes(true)
+		.filter_map(|mut grapheme| {
+			if grapheme == " " || grapheme == ZWNJ {
+				return None;
+			}
+			grapheme = grapheme.trim_end_matches(ZWNJ);
+			let emoji = emoji_map
+				.get(grapheme)
+				.ok_or_else(|| {
+					format!("Could not recognize \"{grapheme}\" as an emoji in my list.")
+				})
+				.map(|emoji| *emoji);
+			Some(emoji)
+		})
+		.collect()
 }
 
 /// Gets the emojis from a specified option index and ensures there is at least one emoji, otherwise returns a user-friendly error string.
@@ -84,7 +84,7 @@ pub fn get_and_parse_emoji_option(
 	emoji_map: &EmojiMap,
 	options: &[CommandDataOption],
 	index: usize,
-) -> Result<Vec<(Emoji, i64)>, Cow<'static, str>> {
+) -> Result<Vec<Emoji>, Cow<'static, str>> {
 	let input = options
 		.get(index)
 		.and_then(|option| option.value.as_ref())
@@ -97,17 +97,6 @@ pub fn get_and_parse_emoji_option(
 		Err("You did not specify any emojis.")?;
 	}
 	Ok(emojis)
-}
-
-pub fn write_emojis(string: &mut String, emojis: &[(Emoji, i64)]) {
-	for (emoji, count) in emojis {
-		string.push_str(emoji.as_str());
-		if *count > 1 {
-			write!(string, "x{count}").unwrap();
-		} else {
-			string.push_str(ZWNJ); // To avoid some emojis combining inappropriately.
-		}
-	}
 }
 
 #[cfg(test)]

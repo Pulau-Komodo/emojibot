@@ -1,8 +1,7 @@
 use itertools::Itertools;
 use serenity::model::prelude::UserId;
-use std::fmt::Write;
 
-use crate::emoji::Emoji;
+use crate::{emoji::Emoji, emojis_with_counts::EmojisWithCounts};
 
 /// A trade offer from one user to another user with an offered list of emojis and a requested list of emojis, both kept sorted.
 ///
@@ -11,8 +10,8 @@ use crate::emoji::Emoji;
 pub(super) struct TradeOffer {
 	offering_user: UserId,
 	target_user: UserId,
-	offer: Vec<(Emoji, i64)>,
-	request: Vec<(Emoji, i64)>,
+	offer: EmojisWithCounts,
+	request: EmojisWithCounts,
 }
 
 impl TradeOffer {
@@ -20,14 +19,12 @@ impl TradeOffer {
 	pub fn new(
 		user: UserId,
 		target_user: UserId,
-		mut offer: Vec<(Emoji, i64)>,
-		mut request: Vec<(Emoji, i64)>,
+		offer: EmojisWithCounts,
+		request: EmojisWithCounts,
 	) -> Result<Self, String> {
 		if offer.iter().any(|emoji| request.iter().contains(emoji)) {
 			return Err(String::from("You put an emoji on both sides of the trade."));
 		}
-		offer.sort_by_key(|(emoji, _)| *emoji);
-		request.sort_by_key(|(emoji, _)| *emoji);
 		Ok(Self {
 			offering_user: user,
 			target_user,
@@ -43,13 +40,13 @@ impl TradeOffer {
 		let mut request = Vec::new();
 		for (emoji, count) in contents {
 			if count > 0 {
-				request.push((emoji, count));
+				request.push((emoji, count as u32));
 			} else {
-				offer.push((emoji, -count));
+				offer.push((emoji, (-count) as u32));
 			}
 		}
-		offer.sort_by_key(|(emoji, _)| *emoji);
-		request.sort_by_key(|(emoji, _)| *emoji);
+		let offer = EmojisWithCounts::new(offer);
+		let request = EmojisWithCounts::new(request);
 		Self {
 			offering_user: user,
 			target_user,
@@ -63,32 +60,22 @@ impl TradeOffer {
 	pub fn target_user(&self) -> UserId {
 		self.target_user
 	}
-	pub fn offer(&self) -> &Vec<(Emoji, i64)> {
+	pub fn offer(&self) -> &EmojisWithCounts {
 		&self.offer
 	}
-	pub fn request(&self) -> &Vec<(Emoji, i64)> {
+	pub fn request(&self) -> &EmojisWithCounts {
 		&self.request
 	}
-	pub fn write_offer<T: Write>(&self, mut buffer: T) {
-		for (emoji, count) in &self.offer {
-			for _ in 0..*count {
-				write!(buffer, "{}", emoji.as_str()).unwrap();
-			}
-		}
-	}
-	pub fn write_request<T: Write>(&self, mut buffer: T) {
-		for (emoji, count) in &self.request {
-			for _ in 0..*count {
-				write!(buffer, "{}", emoji.as_str()).unwrap();
-			}
-		}
-	}
 	/// Generates a single list of emojis closer to the way the database stores it, with positive counts representing emojis the initiator will gain, and negative counts representing emojis the initiator will give away.
-	pub fn flatten(&self) -> Vec<(Emoji, i64)> {
+	pub fn to_database_format(&self) -> Vec<(Emoji, i64)> {
 		self.request
 			.iter()
-			.copied()
-			.chain(self.offer.iter().map(|(emoji, count)| (*emoji, -count)))
+			.map(|(emoji, count)| (*emoji, *count as i64))
+			.chain(
+				self.offer
+					.iter()
+					.map(|(emoji, count)| (*emoji, -(*count as i64))),
+			)
 			.collect()
 	}
 }
