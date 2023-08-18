@@ -1,3 +1,5 @@
+//! Module for the commands that generate a randomized image with emojis.
+
 use std::f32::consts::PI;
 
 use image::RgbaImage;
@@ -9,60 +11,25 @@ use serenity::{
 	model::{
 		prelude::{
 			application_command::ApplicationCommandInteraction, command::CommandOptionType,
-			InteractionResponseType, UserId,
+			InteractionResponseType,
 		},
 		Permissions,
 	},
 	prelude::Context,
 };
-use sqlx::{query, Pool, Sqlite};
+use sqlx::{Pool, Sqlite};
 
 use crate::{
-	emoji::{Emoji, EmojiMap},
+	emoji::EmojiMap,
 	emojis_with_counts::EmojisWithCounts,
 	util::{interaction_reply, parse_emoji_input},
 };
 
+use super::read_emoji_svg;
+
 const EMOJI_SIZE: u32 = 48;
 const EMOJI_SUPERSAMPLED_SIZE: u32 = EMOJI_SIZE * 2;
 const EMOJI_SIZE_WITH_ROTATION_MARGIN: u32 = 136;
-
-async fn has_emoji(executor: &Pool<Sqlite>, emoji: Emoji, user: UserId) -> bool {
-	let user_id = user.0 as i64;
-	let emoji_str = emoji.as_str();
-	query!(
-		"
-		SELECT
-			COUNT(*) AS count
-		FROM
-			emoji_inventory
-		WHERE
-			user = ? AND emoji = ?
-		",
-		user_id,
-		emoji_str
-	)
-	.fetch_optional(executor)
-	.await
-	.unwrap()
-	.map(|record| record.count > 0)
-	.unwrap_or(false)
-}
-
-fn read_emoji_svg(emoji: &Emoji) -> Option<Vec<u8>> {
-	let path = std::path::PathBuf::from(format!("./assets/svg/{}", emoji.file_name()));
-	match std::fs::read(path) {
-		Ok(data) => Some(data),
-		Err(error) => {
-			eprintln!("{}", error);
-			eprintln!(
-				"\"{}\" was not found in the emoji .svg files.",
-				emoji.as_str()
-			);
-			None
-		}
-	}
-}
 
 fn pixmap_to_rgba_image(pixmap: resvg::tiny_skia::Pixmap) -> RgbaImage {
 	let width = pixmap.width();
@@ -146,7 +113,7 @@ fn place_randomly(canvas: &mut RgbaImage, images: &[RgbaImage], count: usize) {
 	}
 }
 
-pub async fn test_image(
+pub async fn execute_test(
 	emoji_map: &EmojiMap,
 	context: Context,
 	interaction: ApplicationCommandInteraction,
@@ -202,9 +169,7 @@ pub async fn test_image(
 		.unwrap();
 }
 
-pub fn register_test_image(
-	command: &mut CreateApplicationCommand,
-) -> &mut CreateApplicationCommand {
+pub fn register_test(command: &mut CreateApplicationCommand) -> &mut CreateApplicationCommand {
 	command
 		.name("testimage")
 		.description("IDK")
@@ -218,7 +183,7 @@ pub fn register_test_image(
 		})
 }
 
-pub async fn command_generate(
+pub async fn execute(
 	database: &Pool<Sqlite>,
 	emoji_map: &EmojiMap,
 	context: Context,
@@ -291,7 +256,7 @@ pub async fn command_generate(
 		.await;
 }
 
-pub fn register_generate(command: &mut CreateApplicationCommand) -> &mut CreateApplicationCommand {
+pub fn register(command: &mut CreateApplicationCommand) -> &mut CreateApplicationCommand {
 	command
 		.name("generate")
 		.description("Generage an image using your emojis.")
@@ -301,76 +266,5 @@ pub fn register_generate(command: &mut CreateApplicationCommand) -> &mut CreateA
 				.description("The emojis to use. If omitted, it uses all your emojis.")
 				.kind(CommandOptionType::String)
 				.required(false)
-		})
-}
-
-pub async fn command_make_raster_image(
-	database: &Pool<Sqlite>,
-	emoji_map: &EmojiMap,
-	context: Context,
-	interaction: ApplicationCommandInteraction,
-) {
-	let input_emoji = interaction
-		.data
-		.options
-		.get(0)
-		.and_then(|option| option.value.as_ref())
-		.and_then(|value| value.as_str())
-		.unwrap()
-		.trim();
-	let Some(emoji) = emoji_map.get(input_emoji) else {
-		interaction_reply(context, interaction, "No such emoji in my list", true).await.unwrap();
-		return;
-	};
-
-	if !has_emoji(database, *emoji, interaction.user.id).await {
-		interaction_reply(context, interaction, "You do not have that emoji.", true)
-			.await
-			.unwrap();
-		return;
-	}
-
-	let png = {
-		let size = 128;
-
-		let Some(data) = read_emoji_svg(emoji) else {
-			let _ = interaction_reply(context, interaction, "No such emoji in my files", true).await;
-			return;
-		};
-		let tree = resvg::usvg::Tree::from_data(&data, &resvg::usvg::Options::default()).unwrap();
-		let tree = resvg::Tree::from_usvg(&tree);
-		let mut pixmap = resvg::tiny_skia::Pixmap::new(size, size).unwrap();
-		pixmap.fill(resvg::tiny_skia::Color::TRANSPARENT);
-		let scale = size as f32 / tree.view_box.rect.width();
-		tree.render(
-			resvg::tiny_skia::Transform::from_scale(scale, scale),
-			&mut pixmap.as_mut(),
-		);
-		pixmap.encode_png().unwrap()
-	};
-
-	let _ = interaction
-		.create_interaction_response(&context.http, |response| {
-			response
-				.kind(InteractionResponseType::ChannelMessageWithSource)
-				.interaction_response_data(|message| {
-					message.add_file((png.as_slice(), "emoji.png"))
-				})
-		})
-		.await;
-}
-
-pub fn register_make_raster_image(
-	command: &mut CreateApplicationCommand,
-) -> &mut CreateApplicationCommand {
-	command
-		.name("image")
-		.description("Generates a raster image version of a specified emoji from your inventory.")
-		.create_option(|option| {
-			option
-				.name("emoji")
-				.description("The emoji to rasterize.")
-				.kind(CommandOptionType::String)
-				.required(true)
 		})
 }

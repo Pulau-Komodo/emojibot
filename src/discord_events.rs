@@ -62,7 +62,7 @@ impl EventHandler for DiscordEventHandler {
 					user_settings::private::execute(&self.database, context, interaction).await;
 				}
 				"image" => {
-					images::command_make_raster_image(
+					images::rasterize::execute(
 						&self.database,
 						&self.emoji_map,
 						context,
@@ -71,11 +71,16 @@ impl EventHandler for DiscordEventHandler {
 					.await;
 				}
 				"generate" => {
-					images::command_generate(&self.database, &self.emoji_map, context, interaction)
-						.await;
+					images::generate::execute(
+						&self.database,
+						&self.emoji_map,
+						context,
+						interaction,
+					)
+					.await;
 				}
 				"testimage" => {
-					images::test_image(&self.emoji_map, context, interaction).await;
+					images::generate::execute_test(&self.emoji_map, context, interaction).await;
 				}
 				_ => (),
 			};
@@ -96,9 +101,9 @@ impl EventHandler for DiscordEventHandler {
 								.create_application_command(find_emoji::register)
 								.create_application_command(trading::command::register)
 								.create_application_command(user_settings::private::register)
-								.create_application_command(images::register_make_raster_image)
-								.create_application_command(images::register_generate)
-								.create_application_command(images::register_test_image)
+								.create_application_command(images::rasterize::register)
+								.create_application_command(images::generate::register)
+								.create_application_command(images::generate::register_test)
 						})
 						.await
 						.unwrap();

@@ -17,23 +17,11 @@ impl EmojisWithCounts {
 		emojis.sort_unstable();
 		Self(emojis)
 	}
-	// pub fn from_user_input(emoji_map: &EmojiMap, input: &str) -> Result<Self, String> {
-	// 	let mut emojis = HashMap::new();
-	// 	for mut grapheme in input.graphemes(true) {
-	// 		if grapheme == " " || grapheme == ZWNJ {
-	// 			continue;
-	// 		}
-	// 		grapheme = grapheme.trim_end_matches(ZWNJ);
-	// 		let emoji = *emoji_map.get(grapheme).ok_or_else(|| {
-	// 			format!("Could not recognize \"{grapheme}\" as an emoji in my list.")
-	// 		})?;
-	// 		*emojis.entry(emoji).or_insert(0) += 1;
-	// 	}
-
-	// 	let mut emojis = emojis.into_iter().collect::<Vec<_>>();
-	// 	emojis.sort_unstable();
-	// 	Ok(Self(emojis))
-	// }
+	pub fn from_iter(emojis: impl IntoIterator<Item = (Emoji, u32)>) -> Self {
+		let mut emojis = emojis.into_iter().collect::<Vec<_>>();
+		emojis.sort_unstable();
+		Self(emojis)
+	}
 	pub async fn from_database_for_user(
 		executor: &Pool<Sqlite>,
 		emoji_map: &EmojiMap,

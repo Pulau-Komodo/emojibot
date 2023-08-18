@@ -297,17 +297,12 @@ async fn get_group_contents<'a, E: SqliteExecutor<'a>>(
 	.fetch_all(executor)
 	.await
 	.unwrap();
-	EmojisWithCounts::new(
-		records
-			.into_iter()
-			.map(|record| {
-				(
-					*emoji_map.get(record.emoji.as_str()).unwrap(),
-					record.count as u32,
-				)
-			})
-			.collect(),
-	)
+	EmojisWithCounts::from_iter(records.into_iter().map(|record| {
+		(
+			*emoji_map.get(record.emoji.as_str()).unwrap(),
+			record.count as u32,
+		)
+	}))
 }
 
 pub(super) async fn group_name_and_contents(
