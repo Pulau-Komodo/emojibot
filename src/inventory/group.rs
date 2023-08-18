@@ -5,11 +5,10 @@ use serenity::{
 	model::prelude::{
 		application_command::{ApplicationCommandInteraction, CommandDataOption},
 		command::CommandOptionType,
-		UserId,
 	},
 	prelude::Context,
 };
-use sqlx::{query, Pool, Sqlite, Transaction};
+use sqlx::{Pool, Sqlite};
 
 use crate::{
 	emoji::EmojiMap,
@@ -17,185 +16,10 @@ use crate::{
 	util::{ephemeral_reply, get_and_parse_emoji_option},
 };
 
-pub async fn remove_empty_groups(executor: &mut Transaction<'_, Sqlite>, user: UserId) {
-	let user_id = user.0 as i64;
-	let deleted_any = query!(
-		"
-		DELETE FROM emoji_inventory_groups
-		WHERE user = ? AND (
-			SELECT COUNT(*)
-			FROM emoji_inventory
-			WHERE emoji_inventory.user = emoji_inventory_groups.user AND emoji_inventory.group_id = emoji_inventory_groups.id
-		) = 0
-		", user_id
-	).execute(&mut **executor).await.unwrap().rows_affected() > 0;
-	if deleted_any {
-		close_ordering_gaps(executor, user).await;
-	}
-}
-
-async fn close_ordering_gaps(executor: &mut Transaction<'_, Sqlite>, user: UserId) {
-	let user_id = user.0 as i64;
-	let groups = query!(
-		"
-		SELECT name
-		FROM emoji_inventory_groups
-		WHERE user = ?
-		ORDER BY sort_order ASC
-		",
-		user_id
-	)
-	.fetch_all(&mut **executor)
-	.await
-	.unwrap();
-
-	for (index, group) in groups.into_iter().enumerate() {
-		let group_name = group.name;
-		let sort_order = index as i64;
-		query!(
-			"
-			UPDATE emoji_inventory_groups
-			SET sort_order = ?
-			WHERE user = ? AND name = ?
-			",
-			sort_order,
-			user_id,
-			group_name
-		)
-		.execute(&mut **executor)
-		.await
-		.unwrap();
-	}
-}
-
-async fn add_to_group(
-	executor: &Pool<Sqlite>,
-	user: UserId,
-	group_name: &str,
-	emojis: &EmojisWithCounts,
-) -> (String, EmojisWithCounts) {
-	let user_id = user.0 as i64;
-	let mut transaction = executor.begin().await.unwrap();
-	let group_count = query!(
-		"
-		SELECT COUNT(*) AS group_count
-		FROM emoji_inventory_groups
-		WHERE user = ?
-		",
-		user_id
-	)
-	.fetch_one(&mut *transaction)
-	.await
-	.unwrap()
-	.group_count;
-	let group = query!(
-		"
-		INSERT INTO emoji_inventory_groups (user, name, sort_order)
-		VALUES (?, ?, ?)
-		ON CONFLICT (user, name COLLATE NOCASE) DO NOTHING;
-		SELECT id, name
-		FROM emoji_inventory_groups
-		WHERE user = ? AND name = ?;
-		",
-		user_id,
-		group_name,
-		group_count,
-		user_id,
-		group_name,
-	)
-	.fetch_one(&mut *transaction)
-	.await
-	.unwrap();
-
-	let group_id = group.id;
-	let mut added_emojis = Vec::with_capacity(emojis.unique_emoji_count());
-	for (emoji, count) in emojis {
-		let emoji_str = emoji.as_str();
-		let rows_affected = query!(
-			"
-			UPDATE emoji_inventory
-			SET group_id = ?
-			WHERE user = ? AND emoji = ? AND rowid IN (
-				SELECT emoji_inventory.rowid
-				FROM emoji_inventory
-				LEFT JOIN emoji_inventory_groups
-				ON emoji_inventory.group_id = emoji_inventory_groups.id
-				WHERE emoji_inventory.user = ? AND emoji_inventory.emoji = ?
-				ORDER BY IFNULL(sort_order, 9223372036854775807) DESC
-				LIMIT ?
-			)
-			",
-			group_id,
-			user_id,
-			emoji_str,
-			user_id,
-			emoji_str,
-			*count
-		)
-		.execute(&mut *transaction)
-		.await
-		.unwrap()
-		.rows_affected();
-		if rows_affected > 0 {
-			added_emojis.push((*emoji, rows_affected as u32));
-		}
-	}
-
-	remove_empty_groups(&mut transaction, user).await;
-
-	transaction.commit().await.unwrap();
-
-	(group.name, EmojisWithCounts::new(added_emojis))
-}
-
-async fn remove_from_group(
-	executor: &Pool<Sqlite>,
-	user: UserId,
-	emojis: &EmojisWithCounts,
-	group: &str,
-) -> EmojisWithCounts {
-	let user_id = user.0 as i64;
-	let mut degrouped_emojis = Vec::new();
-
-	let mut transaction = executor.begin().await.unwrap();
-	for (emoji, count) in emojis {
-		let emoji_str = emoji.as_str();
-		let rows_affected = query!(
-			"
-			UPDATE emoji_inventory
-			SET group_id = NULL
-			WHERE user = ? AND emoji = ? AND emoji_inventory.group_id IS NOT NULL AND rowid IN (
-				SELECT emoji_inventory.rowid
-				FROM emoji_inventory
-				LEFT JOIN emoji_inventory_groups
-				ON emoji_inventory.group_id = emoji_inventory_groups.id
-				WHERE emoji_inventory.user = ? AND emoji_inventory.emoji = ? AND emoji_inventory_groups.name = ?
-				ORDER BY sort_order DESC
-				LIMIT ?
-			)
-			",
-			user_id,
-			emoji_str,
-			user_id,
-			emoji_str,
-			group,
-			count
-		)
-		.execute(&mut *transaction)
-		.await
-		.unwrap()
-		.rows_affected();
-		if rows_affected > 0 {
-			degrouped_emojis.push((*emoji, rows_affected as u32));
-		}
-	}
-
-	remove_empty_groups(&mut transaction, user).await;
-
-	transaction.commit().await.unwrap();
-
-	EmojisWithCounts::new(degrouped_emojis)
-}
+use super::queries::{
+	add_to_group, group_name_and_contents, list_groups, remove_from_group, rename_group,
+	reposition_group, RepositionOutcome,
+};
 
 pub async fn execute(
 	database: &Pool<Sqlite>,
@@ -213,7 +37,7 @@ pub async fn execute(
 				interaction,
 				subcommand.options,
 			)
-			.await
+			.await;
 		}
 		"remove" => {
 			remove(
@@ -223,10 +47,28 @@ pub async fn execute(
 				interaction,
 				subcommand.options,
 			)
-			.await
+			.await;
 		}
-		"rename" | "list" | "view" | "reposition" => {
-			let _ = ephemeral_reply(context, interaction, "Not yet implemented.").await;
+		"rename" => {
+			rename(database, context, interaction, subcommand.options).await;
+		}
+		"list" => {
+			list(database, context, interaction).await;
+		}
+		"view" => {
+			view(
+				database,
+				emoji_map,
+				context,
+				interaction,
+				subcommand.options,
+			)
+			.await;
+		}
+		"reposition" => {
+			// let _ = ephemeral_reply(context, interaction, "Not yet implemented.").await;
+			// return;
+			reposition(database, context, interaction, subcommand.options).await;
 		}
 		_ => panic!("Received invalid subcommand name."),
 	}
@@ -332,6 +174,161 @@ async fn remove(
 		1 => message.push_str(" The other one was not in that group."),
 		n => write!(message, " The other {} were not in that group.", n).unwrap(),
 	}
+
+	let _ = ephemeral_reply(context, interaction, message).await;
+}
+
+async fn rename(
+	database: &Pool<Sqlite>,
+	context: Context,
+	interaction: ApplicationCommandInteraction,
+	options: Vec<CommandDataOption>,
+) {
+	let group = options
+		.get(0)
+		.and_then(|option| option.value.as_ref())
+		.and_then(|value| value.as_str())
+		.unwrap();
+	let new_name = options
+		.get(1)
+		.and_then(|option| option.value.as_ref())
+		.and_then(|value| value.as_str())
+		.unwrap();
+
+	let Ok(old_name) = rename_group(database, interaction.user.id, group, new_name).await else {
+		let _ = ephemeral_reply(context, interaction, format!("You have no group called \"{group}\".")).await;
+		return;
+	};
+
+	let message = format!("Renamed group {} to {}.", old_name, new_name);
+	let _ = ephemeral_reply(context, interaction, message).await;
+}
+
+async fn list(
+	database: &Pool<Sqlite>,
+	context: Context,
+	interaction: ApplicationCommandInteraction,
+) {
+	let (groups, ungrouped) = list_groups(database, interaction.user.id).await;
+
+	let s = if ungrouped == 1 { "" } else { "s" };
+	let message = match groups.len() {
+		0 => format!("You have no groups and {ungrouped} ungrouped emoji{s}."),
+		1 => {
+			let (name, count) = groups.first().unwrap();
+			format!(
+				"Your only group is {} ({}) and you have {ungrouped} ungrouped emoji{s}.",
+				name, count
+			)
+		}
+		group_count => {
+			let mut message = String::from("Your groups are ");
+			for (index, (name, count)) in groups.into_iter().enumerate() {
+				if index + 1 == group_count {
+					message.push_str(" and ");
+				} else if index != 0 {
+					message.push_str(", ");
+				}
+				message
+					.write_fmt(format_args!("{} ({})", name, count))
+					.unwrap();
+			}
+			message
+				.write_fmt(format_args!(
+					", and you have {ungrouped} ungrouped emoji{s}."
+				))
+				.unwrap();
+			message
+		}
+	};
+
+	let _ = ephemeral_reply(context, interaction, message).await;
+}
+
+async fn view(
+	database: &Pool<Sqlite>,
+	emoji_map: &EmojiMap,
+	context: Context,
+	interaction: ApplicationCommandInteraction,
+	options: Vec<CommandDataOption>,
+) {
+	let group = options
+		.get(0)
+		.and_then(|option| option.value.as_ref())
+		.and_then(|value| value.as_str())
+		.unwrap();
+
+	let Some((name, emojis)) = group_name_and_contents(database, emoji_map, interaction.user.id, group).await else {
+			_ = ephemeral_reply(context, interaction, format!("You have no group called \"{group}\".")).await;
+			return;
+		};
+
+	let message = format!("Contents of group {}: {}", name, emojis);
+	_ = ephemeral_reply(context, interaction, message).await;
+}
+
+async fn reposition(
+	database: &Pool<Sqlite>,
+	context: Context,
+	interaction: ApplicationCommandInteraction,
+	options: Vec<CommandDataOption>,
+) {
+	let group = options
+		.get(0)
+		.and_then(|option| option.value.as_ref())
+		.and_then(|value| value.as_str())
+		.unwrap();
+	let Some::<u32>(new_position) = options.get(1)
+	.and_then(|option| option.value.as_ref())
+	.and_then(|value| value.as_u64())
+	.and_then(|num| num.try_into().ok())
+	 else {
+		eprintln!("Somehow received a number that can't be represented as u32.");
+		let _ = ephemeral_reply(context, interaction, "Error: invalid number.").await;
+		return;
+	 };
+
+	let Ok((name, outcome, old_position, group_count)) = reposition_group(database, interaction.user.id, group, new_position).await else {
+		let _ = ephemeral_reply(context, interaction, format!("You have no group called \"{group}\".")).await;
+		return;
+	};
+
+	let message = if group_count == 1 {
+		format!("{name} is your only group. There is nowhere to move it.")
+	} else {
+		match outcome {
+			RepositionOutcome::DidNotMove => {
+				if new_position > group_count {
+					format!("That move just puts {name} at the end, where it already was.")
+				} else if old_position == group_count - 1 {
+					format!("{name} was already at the end.")
+				} else if new_position == 0 {
+					format!("{name} was already at the start.")
+				} else {
+					format!("{name} was already in that position.")
+				}
+			}
+			RepositionOutcome::MovedToFront => {
+				format!("Moved {name} to the start.")
+			}
+			RepositionOutcome::MovedToBack => {
+				format!("Moved {name} to the end.")
+			}
+			RepositionOutcome::MovedBetween(neighbours) => {
+				if new_position > old_position {
+					format!(
+						"Moved {name} down between {} and {}.",
+						neighbours[0], neighbours[1]
+					)
+				} else {
+					format!(
+						"Moved {name} up between {} and {}.",
+						neighbours[0], neighbours[1]
+					)
+				}
+			}
+		}
+	};
 
 	let _ = ephemeral_reply(context, interaction, message).await;
 }
@@ -442,6 +439,7 @@ pub fn register(command: &mut CreateApplicationCommand) -> &mut CreateApplicatio
 						.name("position")
 						.description("The position to move the group to, where 0 is the first.")
 						.kind(CommandOptionType::Integer)
+						.min_int_value(0)
 						.required(true)
 				})
 		})

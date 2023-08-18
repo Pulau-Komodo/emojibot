@@ -3,7 +3,7 @@ use sqlx::{query, Executor, Pool, Sqlite, Transaction};
 
 use crate::{
 	emoji::{Emoji, EmojiMap},
-	inventory::group::remove_empty_groups,
+	inventory::queries::remove_empty_groups,
 };
 
 use super::trade_offer::TradeOffer;

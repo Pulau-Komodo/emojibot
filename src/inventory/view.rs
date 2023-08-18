@@ -61,7 +61,10 @@ pub async fn execute(
 	}
 
 	let (groups, ungrouped) = get_user_emojis_grouped(database, emoji_map, target).await;
-	let emoji_count = groups.iter().chain(&ungrouped).count();
+	let emoji_count = groups
+		.iter()
+		.chain(&ungrouped)
+		.fold(0, |sum, emoji_set| sum + emoji_set.emoji_count());
 	if emoji_count == 0 {
 		let message = name
 			.map(|name| Cow::from(format!("{name} has no emojis. 🤔")))
@@ -74,8 +77,8 @@ pub async fn execute(
 	let mut output = match (emoji_count, name) {
 		(1, Some(name)) => format!("{name} only has "),
 		(1, None) => String::from("You only have "),
-		(_, Some(name)) => format!("{name} has the following emojis: "),
-		(_, None) => String::from("You have the following emojis: "),
+		(n, Some(name)) => format!("{name} has the following {n} emojis: "),
+		(n, None) => format!("You have the following {n} emojis: "),
 	};
 
 	for emojis in groups.into_iter() {
