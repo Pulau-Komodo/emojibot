@@ -1,5 +1,5 @@
 --
--- File generated with SQLiteStudio v3.4.4 on Wed Aug 16 14:40:34 2023
+-- File generated with SQLiteStudio v3.4.4 on Fri Aug 18 17:14:28 2023
 --
 -- Text encoding used: System
 --
@@ -7,7 +7,10 @@ PRAGMA foreign_keys = off;
 BEGIN TRANSACTION;
 
 -- Table: emoji_inventory
-CREATE TABLE IF NOT EXISTS emoji_inventory (user INTEGER NOT NULL, emoji TEXT NOT NULL, count INTEGER NOT NULL DEFAULT (1), PRIMARY KEY (user, emoji) ON CONFLICT ROLLBACK) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS emoji_inventory (user INTEGER NOT NULL, emoji TEXT NOT NULL, group_id REFERENCES emoji_inventory_groups (id) ON DELETE SET NULL ON UPDATE CASCADE);
+
+-- Table: emoji_inventory_groups
+CREATE TABLE IF NOT EXISTS emoji_inventory_groups (id INTEGER PRIMARY KEY NOT NULL, user INTEGER NOT NULL, name TEXT NOT NULL COLLATE NOCASE, sort_order INTEGER NOT NULL, CONSTRAINT unique_name_per_user UNIQUE (user, name COLLATE NOCASE), UNIQUE (user, sort_order));
 
 -- Table: last_seen
 CREATE TABLE IF NOT EXISTS last_seen (user NUMERIC PRIMARY KEY UNIQUE ON CONFLICT REPLACE NOT NULL, date DATE NOT NULL DEFAULT (date()));
