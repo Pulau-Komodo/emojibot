@@ -11,7 +11,7 @@ use serenity::{
 	model::{
 		prelude::{
 			application_command::ApplicationCommandInteraction, command::CommandOptionType,
-			InteractionResponseType,
+			InteractionResponseType, UserId,
 		},
 		Permissions,
 	},
@@ -22,6 +22,7 @@ use sqlx::{Pool, Sqlite};
 use crate::{
 	emoji::EmojiMap,
 	emojis_with_counts::EmojisWithCounts,
+	inventory::queries::get_group_contents,
 	util::{interaction_reply, parse_emoji_input},
 };
 
@@ -113,6 +114,30 @@ fn place_randomly(canvas: &mut RgbaImage, images: &[RgbaImage], count: usize) {
 	}
 }
 
+async fn parse_emoji_and_group_input<'s>(
+	database: &Pool<Sqlite>,
+	emoji_map: &EmojiMap,
+	user: UserId,
+	input: &'s str,
+) -> Result<EmojisWithCounts, String> {
+	let mut emojis = Vec::new();
+	for substring in input.split(',') {
+		let substring = substring.trim();
+		if let Ok(parsed_emojis) = parse_emoji_input(emoji_map, substring) {
+			emojis.extend(parsed_emojis);
+		} else {
+			let group_emojis = get_group_contents(database, emoji_map, user, substring)
+				.await
+				.flatten();
+			if group_emojis.is_empty() {
+				return Err(format!("You do not have a group named \"{substring}\"."));
+			}
+			emojis.extend(group_emojis);
+		}
+	}
+	Ok(EmojisWithCounts::from_flat(&emojis))
+}
+
 pub async fn execute_test(
 	emoji_map: &EmojiMap,
 	context: Context,
@@ -189,40 +214,43 @@ pub async fn execute(
 	context: Context,
 	interaction: ApplicationCommandInteraction,
 ) {
-	let emojis = if let Some(input) = interaction
-		.data
-		.options
-		.first()
-		.and_then(|option| option.value.as_ref())
-		.and_then(|value| value.as_str())
-	{
-		let emojis = match parse_emoji_input(emoji_map, input) {
-			Ok(emojis) => emojis,
-			Err(message) => {
-				let _ = interaction_reply(context, interaction, message, true).await;
+	let emojis =
+		if let Some(input) = interaction
+			.data
+			.options
+			.first()
+			.and_then(|option| option.value.as_ref())
+			.and_then(|value| value.as_str())
+		{
+			let emojis =
+				match parse_emoji_and_group_input(database, emoji_map, interaction.user.id, input)
+					.await
+				{
+					Ok(emojis) => emojis,
+					Err(message) => {
+						let _ = interaction_reply(context, interaction, message, true).await;
+						return;
+					}
+				};
+			if !emojis
+				.are_owned_by_user(database, interaction.user.id)
+				.await
+			{
+				let _ = interaction_reply(
+					context,
+					interaction,
+					"You don't own all specified emojis.",
+					true,
+				)
+				.await;
 				return;
 			}
+			emojis.flatten()
+		} else {
+			EmojisWithCounts::from_database_for_user(database, emoji_map, interaction.user.id)
+				.await
+				.flatten()
 		};
-		let emojis_with_counts = EmojisWithCounts::from_flat(&emojis);
-		if !emojis_with_counts
-			.are_owned_by_user(database, interaction.user.id)
-			.await
-		{
-			let _ = interaction_reply(
-				context,
-				interaction,
-				"You don't own all specified emojis.",
-				true,
-			)
-			.await;
-			return;
-		}
-		emojis
-	} else {
-		EmojisWithCounts::from_database_for_user(database, emoji_map, interaction.user.id)
-			.await
-			.flatten()
-	};
 
 	let Some(images) = emojis.into_iter().map(|emoji| {
 		let svg_data = read_emoji_svg(&emoji)?;
@@ -263,7 +291,7 @@ pub fn register(command: &mut CreateApplicationCommand) -> &mut CreateApplicatio
 		.create_option(|option| {
 			option
 				.name("emojis")
-				.description("The emojis to use. If omitted, it uses all your emojis.")
+				.description("The emojis to use. If omitted, it uses all your emojis. You can use comma-separated emoji groups.")
 				.kind(CommandOptionType::String)
 				.required(false)
 		})

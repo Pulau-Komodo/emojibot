@@ -275,7 +275,7 @@ pub(super) async fn list_groups(
 	(groups, ungrouped)
 }
 
-async fn get_group_contents<'a, E: SqliteExecutor<'a>>(
+pub(crate) async fn get_group_contents<'a, E: SqliteExecutor<'a>>(
 	executor: E,
 	emoji_map: &EmojiMap,
 	user: UserId,
