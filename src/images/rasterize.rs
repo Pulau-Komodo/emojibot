@@ -13,7 +13,7 @@ use sqlx::{Pool, Sqlite};
 
 use crate::{emoji::EmojiMap, emojis_with_counts::EmojisWithCounts, util::interaction_reply};
 
-use super::{queries::has_emojis, read_emoji_svg};
+use super::read_emoji_svg;
 
 pub async fn execute(
 	database: &Pool<Sqlite>,
@@ -34,12 +34,9 @@ pub async fn execute(
 		return;
 	};
 
-	if !has_emojis(
-		database,
-		interaction.user.id,
-		EmojisWithCounts::from_iter([(*emoji, 1)]),
-	)
-	.await
+	if EmojisWithCounts::from_iter([(*emoji, 1)])
+		.are_owned_by_user(database, interaction.user.id)
+		.await
 	{
 		interaction_reply(context, interaction, "You do not have that emoji.", true)
 			.await

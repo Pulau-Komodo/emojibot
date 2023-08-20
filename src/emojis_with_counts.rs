@@ -72,9 +72,9 @@ impl EmojisWithCounts {
 	}
 
 	/// Check a user's emoji inventory to see if it has the emojis.
-	pub async fn are_owned_by_user(&self, executor: &Pool<Sqlite>, user: UserId) -> bool {
+	pub async fn are_owned_by_user(&self, database: &Pool<Sqlite>, user: UserId) -> bool {
 		let user_id = user.0 as i64;
-		let mut transaction = executor.begin().await.unwrap();
+		let mut transaction = database.begin().await.unwrap();
 		for (emoji, target_count) in &self.0 {
 			let emoji = emoji.as_str();
 			let count = query!(

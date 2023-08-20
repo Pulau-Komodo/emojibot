@@ -3,7 +3,6 @@
 use crate::emoji::Emoji;
 
 pub mod generate;
-mod queries;
 pub mod rasterize;
 
 fn read_emoji_svg(emoji: &Emoji) -> Option<Vec<u8>> {
