@@ -257,7 +257,7 @@ pub(super) async fn complete_trade(executor: &Pool<Sqlite>, trade_offer: &TradeO
 	transaction.commit().await.unwrap();
 }
 
-async fn log_trade(executor: &mut Transaction<'_, Sqlite>, trade_offer: &TradeOffer) {
+pub(super) async fn log_trade(executor: &mut Transaction<'_, Sqlite>, trade_offer: &TradeOffer) {
 	let offering_user_id = trade_offer.offering_user().0 as i64;
 	let target_user = trade_offer.target_user().0 as i64;
 	let id = query!(
@@ -313,7 +313,7 @@ async fn transfer_emoji(
 			LEFT JOIN emoji_inventory_groups
 			ON emoji_inventory.group_id = emoji_inventory_groups.id
 			WHERE emoji_inventory.user = ? AND emoji_inventory.emoji = ?
-			ORDER BY sort_order ASC
+			ORDER BY sort_order DESC
 			LIMIT ?
 		)
 		",

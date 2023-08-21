@@ -1,5 +1,6 @@
-pub(crate) mod command;
 mod queries;
+pub(crate) mod recycling;
+pub(crate) mod trade;
 mod trade_offer;
 
 use serenity::{

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use serenity::model::prelude::UserId;
-use sqlx::{query, Pool, Sqlite};
+use sqlx::{query, Pool, Sqlite, SqliteExecutor};
 
 use crate::{
 	emoji::{Emoji, EmojiMap},
@@ -53,4 +53,20 @@ pub async fn get_user_emojis_grouped(
 		.collect();
 
 	(emoji_groups, ungrouped)
+}
+
+pub async fn give_emoji<'c, E: SqliteExecutor<'c>>(database: E, user: UserId, emoji: Emoji) {
+	let user_id = *user.as_u64() as i64;
+	let emoji = emoji.as_str();
+	query!(
+		"
+		INSERT INTO emoji_inventory (user, emoji)
+		VALUES (?, ?)
+		",
+		user_id,
+		emoji
+	)
+	.execute(database)
+	.await
+	.unwrap();
 }

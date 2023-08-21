@@ -49,9 +49,9 @@ pub async fn execute(
 ) {
 	let is_private = toggle_private(database, interaction.user.id).await;
 	let content = if is_private {
-		"Your emoji inventory was set to private. Others can no longer view your emoji inventory or find emojis in your inventory, and you won't be notified of new emojis through reactions."
+		"Your emoji inventory was set to private. Others can no longer view your emoji inventory or find emojis in your inventory, recycling input and outcome will be private, and you won't be notified of new emojis through reactions."
 	} else {
-		"Your emoji inventory was set to public. Others can now view your emoji inventory and find emojis in your inventory, and you will be notified of new emojis through reactions."
+		"Your emoji inventory was set to public. Others can now view your emoji inventory and find emojis in your inventory, recycling input and outcome will be public, and you will be notified of new emojis through reactions."
 	};
 	let _ = interaction_reply(context, interaction, content, true).await;
 }

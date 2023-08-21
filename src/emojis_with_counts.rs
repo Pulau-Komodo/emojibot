@@ -9,7 +9,7 @@ use crate::{
 };
 
 /// A list of emojis with a count for each emoji, sorted by emoji.
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Clone)]
 pub struct EmojisWithCounts(Vec<(Emoji, u32)>);
 
 impl EmojisWithCounts {
@@ -130,6 +130,16 @@ impl Display for EmojisWithCounts {
 			}
 		}
 		Ok(())
+	}
+}
+
+impl IntoIterator for EmojisWithCounts {
+	type Item = (Emoji, u32);
+
+	type IntoIter = std::vec::IntoIter<Self::Item>;
+
+	fn into_iter(self) -> Self::IntoIter {
+		self.0.into_iter()
 	}
 }
 

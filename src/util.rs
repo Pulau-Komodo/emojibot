@@ -44,6 +44,17 @@ where
 	interaction_reply(context, interaction, content, true).await
 }
 
+pub async fn public_reply<S>(
+	context: Context,
+	interaction: ApplicationCommandInteraction,
+	content: S,
+) -> SerenityResult<()>
+where
+	S: Display,
+{
+	interaction_reply(context, interaction, content, false).await
+}
+
 /// Gives nickname if possible, otherwise display name, otherwise ID as a string.
 pub async fn get_name(context: &Context, guild: GuildId, user: UserId) -> String {
 	let member = if let Some(member) = context.cache.member(guild, user) {

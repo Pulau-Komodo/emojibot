@@ -41,8 +41,12 @@ impl DiscordEventHandler {
 				find_emoji::execute(&self.database, &self.emoji_map, context, interaction).await;
 			}
 			"trade" => {
-				trading::command::execute(&self.database, &self.emoji_map, context, interaction)
+				trading::trade::execute(&self.database, &self.emoji_map, context, interaction)
 					.await;
+			}
+			"recycle" => {
+				trading::recycling::execute(&self.database, &self.emoji_map, context, interaction)
+					.await
 			}
 			"private" => {
 				user_settings::private::execute(&self.database, context, interaction).await;
@@ -89,7 +93,8 @@ impl EventHandler for DiscordEventHandler {
 								.create_application_command(inventory::view::register)
 								.create_application_command(inventory::group::register)
 								.create_application_command(find_emoji::register)
-								.create_application_command(trading::command::register)
+								.create_application_command(trading::trade::register)
+								.create_application_command(trading::recycling::register)
 								.create_application_command(user_settings::private::register)
 								.create_application_command(images::rasterize::register)
 								.create_application_command(images::generate::register)
