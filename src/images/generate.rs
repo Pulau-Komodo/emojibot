@@ -23,7 +23,7 @@ use crate::{
 	emoji::EmojiMap,
 	emojis_with_counts::EmojisWithCounts,
 	inventory::queries::get_group_contents,
-	util::{interaction_reply, parse_emoji_input},
+	util::{ephemeral_reply, interaction_reply, parse_emoji_input},
 };
 
 use super::read_emoji_svg;
@@ -154,7 +154,7 @@ pub async fn execute_test(
 	let emojis = match parse_emoji_input(emoji_map, input_emojis) {
 		Ok(emojis) => emojis,
 		Err(error) => {
-			let _ = interaction_reply(context, interaction, error, true).await;
+			let _ = ephemeral_reply(context, interaction, error).await;
 			return;
 		}
 	};
@@ -167,7 +167,7 @@ pub async fn execute_test(
 			Some(add_rotation_margin(image))
 		}
 		).collect::<Option<Vec<_>>>() else {
-			let _ = interaction_reply(context, interaction, "Some file missing", true).await;
+			let _ = ephemeral_reply(context, interaction, "Some file missing").await;
 			return;
 		};
 		let mut canvas = RgbaImage::new(400, 200);
@@ -214,45 +214,36 @@ pub async fn execute(
 	context: Context,
 	interaction: ApplicationCommandInteraction,
 ) {
+	let input = interaction
+		.data
+		.options
+		.first()
+		.and_then(|option| option.value.as_ref())
+		.and_then(|value| value.as_str())
+		.unwrap();
 	let emojis =
-		if let Some(input) = interaction
-			.data
-			.options
-			.first()
-			.and_then(|option| option.value.as_ref())
-			.and_then(|value| value.as_str())
-		{
-			let emojis =
-				match parse_emoji_and_group_input(database, emoji_map, interaction.user.id, input)
-					.await
-				{
-					Ok(emojis) => emojis,
-					Err(message) => {
-						let _ = interaction_reply(context, interaction, message, true).await;
-						return;
-					}
-				};
-			if !emojis
-				.are_owned_by_user(database, interaction.user.id)
-				.await
-			{
-				let _ = interaction_reply(
-					context,
-					interaction,
-					"You don't own all specified emojis.",
-					true,
-				)
-				.await;
+		match parse_emoji_and_group_input(database, emoji_map, interaction.user.id, input).await {
+			Ok(emojis) => emojis,
+			Err(message) => {
+				let _ = interaction_reply(context, interaction, message, true).await;
 				return;
 			}
-			emojis.flatten()
-		} else {
-			EmojisWithCounts::from_database_for_user(database, emoji_map, interaction.user.id)
-				.await
-				.flatten()
 		};
+	if !emojis
+		.are_owned_by_user(database, interaction.user.id)
+		.await
+	{
+		let _ = interaction_reply(
+			context,
+			interaction,
+			"You don't own all specified emojis.",
+			true,
+		)
+		.await;
+		return;
+	}
 
-	let Some(images) = emojis.into_iter().map(|emoji| {
+	let Some(images) = emojis.flatten().into_iter().map(|emoji| {
 		let svg_data = read_emoji_svg(&emoji)?;
 		let pixmap = svg_to_pixmap(svg_data);
 		let image = pixmap_to_rgba_image(pixmap);
@@ -293,6 +284,6 @@ pub fn register(command: &mut CreateApplicationCommand) -> &mut CreateApplicatio
 				.name("emojis")
 				.description("The emojis to use. If omitted, it uses all your emojis. You can use comma-separated emoji groups.")
 				.kind(CommandOptionType::String)
-				.required(false)
+				.required(true)
 		})
 }
