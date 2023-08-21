@@ -23,7 +23,7 @@ use crate::{
 	emoji::EmojiMap,
 	emojis_with_counts::EmojisWithCounts,
 	inventory::queries::get_group_contents,
-	util::{ephemeral_reply, interaction_reply, parse_emoji_input},
+	util::{ephemeral_reply, parse_emoji_input},
 };
 
 use super::read_emoji_svg;
@@ -225,7 +225,7 @@ pub async fn execute(
 		match parse_emoji_and_group_input(database, emoji_map, interaction.user.id, input).await {
 			Ok(emojis) => emojis,
 			Err(message) => {
-				let _ = interaction_reply(context, interaction, message, true).await;
+				let _ = ephemeral_reply(context, interaction, message).await;
 				return;
 			}
 		};
@@ -233,13 +233,7 @@ pub async fn execute(
 		.are_owned_by_user(database, interaction.user.id)
 		.await
 	{
-		let _ = interaction_reply(
-			context,
-			interaction,
-			"You don't own all specified emojis.",
-			true,
-		)
-		.await;
+		let _ = ephemeral_reply(context, interaction, "You don't own all specified emojis.").await;
 		return;
 	}
 
@@ -250,7 +244,7 @@ pub async fn execute(
 		Some(add_rotation_margin(image))
 	}
 	).collect::<Option<Vec<_>>>() else {
-		let _ = interaction_reply(context, interaction, "Some file missing.", true).await;
+		let _ = ephemeral_reply(context, interaction, "Some file missing.").await;
 		return;
 	};
 
@@ -282,7 +276,7 @@ pub fn register(command: &mut CreateApplicationCommand) -> &mut CreateApplicatio
 		.create_option(|option| {
 			option
 				.name("emojis")
-				.description("The emojis to use. If omitted, it uses all your emojis. You can use comma-separated emoji groups.")
+				.description("The emojis to use. You can use emojis and emoji groups together, comma-separated.")
 				.kind(CommandOptionType::String)
 				.required(true)
 		})
