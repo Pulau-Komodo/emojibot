@@ -1,5 +1,9 @@
 use itertools::Itertools;
-use serenity::{async_trait, model::prelude::*, prelude::*};
+use serenity::{
+	async_trait,
+	model::prelude::{application_command::ApplicationCommandInteraction, *},
+	prelude::*,
+};
 use sqlx::{Pool, Sqlite};
 
 use crate::{
@@ -19,6 +23,44 @@ impl DiscordEventHandler {
 			emoji_map,
 		}
 	}
+	async fn handle_application_command(
+		&self,
+		context: Context,
+		interaction: ApplicationCommandInteraction,
+	) {
+		match interaction.data.name.as_str() {
+			"inventory" => {
+				inventory::view::execute(&self.database, &self.emoji_map, context, interaction)
+					.await;
+			}
+			"group" => {
+				inventory::group::execute(&self.database, &self.emoji_map, context, interaction)
+					.await;
+			}
+			"who" => {
+				find_emoji::execute(&self.database, &self.emoji_map, context, interaction).await;
+			}
+			"trade" => {
+				trading::command::execute(&self.database, &self.emoji_map, context, interaction)
+					.await;
+			}
+			"private" => {
+				user_settings::private::execute(&self.database, context, interaction).await;
+			}
+			"image" => {
+				images::rasterize::execute(&self.database, &self.emoji_map, context, interaction)
+					.await;
+			}
+			"generate" => {
+				images::generate::execute(&self.database, &self.emoji_map, context, interaction)
+					.await;
+			}
+			"testimage" => {
+				images::generate::execute_test(&self.emoji_map, context, interaction).await;
+			}
+			_ => (),
+		};
+	}
 }
 
 #[async_trait]
@@ -31,59 +73,7 @@ impl EventHandler for DiscordEventHandler {
 
 	async fn interaction_create(&self, context: Context, interaction: Interaction) {
 		if let Interaction::ApplicationCommand(interaction) = interaction {
-			match interaction.data.name.as_str() {
-				"inventory" => {
-					inventory::view::execute(&self.database, &self.emoji_map, context, interaction)
-						.await;
-				}
-				"group" => {
-					inventory::group::execute(
-						&self.database,
-						&self.emoji_map,
-						context,
-						interaction,
-					)
-					.await;
-				}
-				"who" => {
-					find_emoji::execute(&self.database, &self.emoji_map, context, interaction)
-						.await;
-				}
-				"trade" => {
-					trading::command::execute(
-						&self.database,
-						&self.emoji_map,
-						context,
-						interaction,
-					)
-					.await;
-				}
-				"private" => {
-					user_settings::private::execute(&self.database, context, interaction).await;
-				}
-				"image" => {
-					images::rasterize::execute(
-						&self.database,
-						&self.emoji_map,
-						context,
-						interaction,
-					)
-					.await;
-				}
-				"generate" => {
-					images::generate::execute(
-						&self.database,
-						&self.emoji_map,
-						context,
-						interaction,
-					)
-					.await;
-				}
-				"testimage" => {
-					images::generate::execute_test(&self.emoji_map, context, interaction).await;
-				}
-				_ => (),
-			};
+			self.handle_application_command(context, interaction).await;
 		}
 	}
 
