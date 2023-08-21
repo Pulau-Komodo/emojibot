@@ -11,7 +11,7 @@ use serenity::{
 };
 use sqlx::{Pool, Sqlite};
 
-use crate::{emoji::EmojiMap, emojis_with_counts::EmojisWithCounts, util::interaction_reply};
+use crate::{emoji::EmojiMap, emojis_with_counts::EmojisWithCounts, util::ephemeral_reply};
 
 use super::read_emoji_svg;
 
@@ -30,17 +30,15 @@ pub async fn execute(
 		.unwrap()
 		.trim();
 	let Some(emoji) = emoji_map.get(input_emoji) else {
-		interaction_reply(context, interaction, "No such emoji in my list", true).await.unwrap();
+		let _ = ephemeral_reply(context, interaction, "No such emoji in my list.").await;
 		return;
 	};
 
-	if EmojisWithCounts::from_iter([(*emoji, 1)])
+	if !EmojisWithCounts::from_iter([(*emoji, 1)])
 		.are_owned_by_user(database, interaction.user.id)
 		.await
 	{
-		interaction_reply(context, interaction, "You do not have that emoji.", true)
-			.await
-			.unwrap();
+		let _ = ephemeral_reply(context, interaction, "You do not have that emoji.").await;
 		return;
 	}
 
@@ -48,7 +46,7 @@ pub async fn execute(
 		let size = 128;
 
 		let Some(data) = read_emoji_svg(emoji) else {
-			let _ = interaction_reply(context, interaction, "No such emoji in my files", true).await;
+			let _ = ephemeral_reply(context, interaction, "No such emoji in my files.").await;
 			return;
 		};
 		let tree = resvg::usvg::Tree::from_data(&data, &resvg::usvg::Options::default()).unwrap();
