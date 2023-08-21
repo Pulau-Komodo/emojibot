@@ -43,7 +43,7 @@ async fn close_ordering_gaps(executor: &mut Transaction<'_, Sqlite>, user: UserI
 		query!(
 			"
 			UPDATE emoji_inventory_groups
-			SET sort_order = ?
+			SET sort_order = ? + 1
 			WHERE user = ? AND name = ?
 			",
 			sort_order,
@@ -79,7 +79,7 @@ pub(super) async fn add_to_group(
 	let group = query!(
 		"
 		INSERT INTO emoji_inventory_groups (user, name, sort_order)
-		VALUES (?, ?, ?)
+		VALUES (?, ?, ? + 1)
 		ON CONFLICT (user, name COLLATE NOCASE) DO NOTHING;
 		SELECT id, name
 		FROM emoji_inventory_groups
@@ -329,6 +329,8 @@ pub(super) enum RepositionOutcome {
 }
 
 /// Returns Err if no such group existed, otherwise Ok(name, old_position, group_count).
+/// 
+/// Note: in Rust code and in user commands, the ordering starts with 0, but in the database it starts with 1.
 pub(super) async fn reposition_group(
 	database: &Pool<Sqlite>,
 	user: UserId,
@@ -344,7 +346,7 @@ pub(super) async fn reposition_group(
 	};
 	let group = query!(
 		"
-		SELECT name, sort_order
+		SELECT name, sort_order - 1 AS sort_order
 		FROM emoji_inventory_groups
 		WHERE user = ? AND name  = ?
 		",
@@ -371,71 +373,48 @@ pub(super) async fn reposition_group(
 	.unwrap()
 	.count as u32;
 
-	let move_to_temp = query!(
-		"
-		UPDATE emoji_inventory_groups
-		SET sort_order = 10000
-		WHERE user = ? AND name = ?			
-		",
-		user_id,
-		name
-	);
-
 	let new_position = new_position.min(group_count - 1);
-	match u32::cmp(&new_position, &current_position) {
+
+	let scoot_offset = match u32::cmp(&new_position, &current_position) {
 		Ordering::Equal => {
+			transaction.commit().await.unwrap();
 			return Ok((
 				name,
 				RepositionOutcome::DidNotMove,
 				current_position,
 				group_count,
-			))
+			));
 		}
-		Ordering::Greater => {
-			move_to_temp.execute(&mut *transaction).await.unwrap();
-			for position in current_position + 1..new_position + 1 {
-				query!(
-					"
-					UPDATE emoji_inventory_groups
-					SET sort_order = sort_order - 1
-					WHERE user = ? AND sort_order = ?
-					",
-					user_id,
-					position
-				)
-				.execute(&mut *transaction)
-				.await
-				.unwrap();
-			}
-		}
-		Ordering::Less => {
-			move_to_temp.execute(&mut *transaction).await.unwrap();
-			for position in (new_position..current_position).rev() {
-				query!(
-					"
-					UPDATE emoji_inventory_groups
-					SET sort_order = sort_order + 1
-					WHERE user = ? AND sort_order = ?
-					",
-					user_id,
-					position
-				)
-				.execute(&mut *transaction)
-				.await
-				.unwrap();
-			}
-		}
-	}
+		Ordering::Greater => -1,
+		Ordering::Less => 1,
+	};
 
+	let lower = current_position.min(new_position) + 1;
+	let upper = current_position.max(new_position) + 1;
 	query!(
 		"
 		UPDATE emoji_inventory_groups
-		SET sort_order = ?
-		WHERE user = ? AND name = ?
+		SET sort_order = -sort_order
+		WHERE user = ? AND sort_order >= ? AND sort_order <= ?;
+
+		UPDATE emoji_inventory_groups
+		SET sort_order = ? + 1
+		WHERE user = ? AND name = ?;
+
+		UPDATE emoji_inventory_groups
+		SET sort_order = -sort_order + ?
+		WHERE user = ? AND sort_order >= -? AND sort_order <= -?;
 		",
+		user_id,
+		lower,
+		upper,
 		new_position,
 		user_id,
-		name
+		name,
+		scoot_offset,
+		user_id,
+		upper,
+		lower,
 	)
 	.execute(&mut *transaction)
 	.await
@@ -452,7 +431,7 @@ pub(super) async fn reposition_group(
 			"
 			SELECT name
 			FROM emoji_inventory_groups
-			WHERE (sort_order = ? OR sort_order = ?) AND user = ?
+			WHERE (sort_order IN (? + 1, ? + 1)) AND user = ?
 			ORDER BY sort_order ASC
 			",
 			before,
