@@ -343,6 +343,10 @@ pub(super) async fn remove_invalidated_trade_offers(
 	let mut transaction = executor.begin().await.unwrap();
 
 	for user in [user_one, user_two] {
+		// User ID 0 stands for no user, or the game itself, or something. It doesn't need to be processed.
+		if user == 0 {
+			continue;
+		}
 		let trade_offers = query!(
 			"
 			SELECT id

@@ -54,6 +54,24 @@ impl TradeOffer {
 			request,
 		}
 	}
+	pub fn new_recycling(user: UserId, offer: EmojisWithCounts) -> Self {
+		let random_emoji = loop {
+			let random_emoji = Emoji::random();
+			if !offer.iter().any(|(emoji, _)| emoji == &random_emoji) {
+				break random_emoji;
+			}
+		};
+		Self {
+			offering_user: user,
+			target_user: UserId(0),
+			offer,
+			request: EmojisWithCounts::from_iter([(random_emoji, 1)]),
+		}
+	}
+	/// Gets the first emoji in the request, which should be the only emoji if this is a recycling request.
+	pub fn recycling_emoji(&self) -> Emoji {
+		self.request.iter().next().unwrap().0
+	}
 	pub fn offering_user(&self) -> UserId {
 		self.offering_user
 	}
