@@ -7,20 +7,13 @@ use serenity::{
 		application_command::ApplicationCommandInteraction, command::CommandOptionType,
 		InteractionResponseType,
 	},
-	prelude::Context,
 };
-use sqlx::{Pool, Sqlite};
 
-use crate::{emoji::EmojiMap, emojis_with_counts::EmojisWithCounts, util::ephemeral_reply};
+use crate::{context::Context, emojis_with_counts::EmojisWithCounts, util::ReplyShortcuts};
 
 use super::read_emoji_svg;
 
-pub async fn execute(
-	database: &Pool<Sqlite>,
-	emoji_map: &EmojiMap,
-	context: Context,
-	interaction: ApplicationCommandInteraction,
-) {
+pub async fn execute(context: Context<'_>, interaction: ApplicationCommandInteraction) {
 	let input_emoji = interaction
 		.data
 		.options
@@ -29,16 +22,18 @@ pub async fn execute(
 		.and_then(|value| value.as_str())
 		.unwrap()
 		.trim();
-	let Some(emoji) = emoji_map.get(input_emoji) else {
-		let _ = ephemeral_reply(context, interaction, "No such emoji in my list.").await;
+	let Some(emoji) = context.emoji_map.get(input_emoji) else {
+		let _ = interaction.ephemeral_reply(context.http, "No such emoji in my list.").await;
 		return;
 	};
 
 	if !EmojisWithCounts::from_iter([(*emoji, 1)])
-		.are_owned_by_user(database, interaction.user.id)
+		.are_owned_by_user(context.database, interaction.user.id)
 		.await
 	{
-		let _ = ephemeral_reply(context, interaction, "You do not have that emoji.").await;
+		let _ = interaction
+			.ephemeral_reply(context.http, "You do not have that emoji.")
+			.await;
 		return;
 	}
 
@@ -46,7 +41,7 @@ pub async fn execute(
 		let size = 128;
 
 		let Some(data) = read_emoji_svg(emoji) else {
-			let _ = ephemeral_reply(context, interaction, "No such emoji in my files.").await;
+			let _ = interaction.ephemeral_reply(context.http, "No such emoji in my files.").await;
 			return;
 		};
 		let tree = resvg::usvg::Tree::from_data(&data, &resvg::usvg::Options::default()).unwrap();

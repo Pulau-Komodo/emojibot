@@ -1,11 +1,12 @@
-use std::{borrow::Cow, fmt::Display};
+use std::{borrow::Cow, fmt::Display, sync::Arc};
 
 use serenity::{
+	async_trait,
+	http::Http,
 	model::prelude::{
 		application_command::{ApplicationCommandInteraction, CommandDataOption},
-		GuildId, InteractionResponseType, UserId,
+		InteractionResponseType,
 	},
-	prelude::Context,
 	Result as SerenityResult,
 };
 use unicode_segmentation::UnicodeSegmentation;
@@ -15,59 +16,43 @@ use crate::{
 	special_characters::ZWNJ,
 };
 
-pub async fn interaction_reply<S>(
-	context: Context,
-	interaction: ApplicationCommandInteraction,
-	content: S,
-	ephemeral: bool,
-) -> SerenityResult<()>
-where
-	S: Display,
-{
-	interaction
-		.create_interaction_response(&context.http, |response| {
+#[async_trait]
+pub trait ReplyShortcuts {
+	async fn reply<S>(self, http: &Arc<Http>, content: S, ephemeral: bool) -> SerenityResult<()>
+	where
+		S: Display + std::marker::Send;
+	async fn ephemeral_reply<S>(self, http: &Arc<Http>, content: S) -> SerenityResult<()>
+	where
+		S: Display + std::marker::Send;
+	async fn public_reply<S>(self, http: &Arc<Http>, content: S) -> SerenityResult<()>
+	where
+		S: Display + std::marker::Send;
+}
+
+#[async_trait]
+impl ReplyShortcuts for ApplicationCommandInteraction {
+	async fn reply<S>(self, http: &Arc<Http>, content: S, ephemeral: bool) -> SerenityResult<()>
+	where
+		S: Display + Send,
+	{
+		self.create_interaction_response(http, |response| {
 			response
 				.kind(InteractionResponseType::ChannelMessageWithSource)
 				.interaction_response_data(|message| message.content(content).ephemeral(ephemeral))
 		})
 		.await
-}
-
-pub async fn ephemeral_reply<S>(
-	context: Context,
-	interaction: ApplicationCommandInteraction,
-	content: S,
-) -> SerenityResult<()>
-where
-	S: Display,
-{
-	interaction_reply(context, interaction, content, true).await
-}
-
-pub async fn public_reply<S>(
-	context: Context,
-	interaction: ApplicationCommandInteraction,
-	content: S,
-) -> SerenityResult<()>
-where
-	S: Display,
-{
-	interaction_reply(context, interaction, content, false).await
-}
-
-/// Gives nickname if possible, otherwise display name, otherwise ID as a string.
-pub async fn get_name(context: &Context, guild: GuildId, user: UserId) -> String {
-	let member = if let Some(member) = context.cache.member(guild, user) {
-		member
-	} else if let Ok(member) = context.http.get_member(guild.0, user.0).await {
-		member
-	} else {
-		return format!("{}", user.0);
-	};
-	if let Some(nick) = member.nick {
-		nick
-	} else {
-		member.display_name().to_string()
+	}
+	async fn ephemeral_reply<S>(self, http: &Arc<Http>, content: S) -> SerenityResult<()>
+	where
+		S: Display + Send,
+	{
+		self.reply(http, content, true).await
+	}
+	async fn public_reply<S>(self, http: &Arc<Http>, content: S) -> SerenityResult<()>
+	where
+		S: Display + Send,
+	{
+		self.reply(http, content, false).await
 	}
 }
 

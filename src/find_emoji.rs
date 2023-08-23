@@ -5,14 +5,10 @@ use serenity::{
 	model::prelude::{
 		application_command::ApplicationCommandInteraction, command::CommandOptionType, UserId,
 	},
-	prelude::Context,
 };
 use sqlx::{query, Pool, Sqlite};
 
-use crate::{
-	emoji::{Emoji, EmojiMap},
-	util::interaction_reply,
-};
+use crate::{context::Context, emoji::Emoji, util::ReplyShortcuts};
 
 async fn find_emoji_users(executor: &Pool<Sqlite>, emoji: Emoji) -> Vec<(UserId, i64)> {
 	let emoji = emoji.as_str();
@@ -37,12 +33,7 @@ async fn find_emoji_users(executor: &Pool<Sqlite>, emoji: Emoji) -> Vec<(UserId,
 		.collect()
 }
 
-pub async fn execute(
-	database: &Pool<Sqlite>,
-	emoji_map: &EmojiMap,
-	context: Context,
-	interaction: ApplicationCommandInteraction,
-) {
+pub async fn execute(context: Context<'_>, interaction: ApplicationCommandInteraction) {
 	let options = &interaction.data.options.first().unwrap().options;
 	let input = options
 		.first()
@@ -50,24 +41,24 @@ pub async fn execute(
 		.and_then(|value| value.as_str())
 		.unwrap_or("");
 
-	let Some(&emoji) = emoji_map.get(input) else {
+	let Some(&emoji) = context.emoji_map.get(input) else {
 		let content = format!("Could not find \"{}\" as an emoji in my list.", input);
-		let _ = interaction_reply(context, interaction, content, true).await;
+		let _ = interaction.ephemeral_reply(context.http, content).await;
 		return;
 	};
 
 	let is_public = options.get(1).is_some();
 
-	let users = find_emoji_users(database, emoji).await;
+	let users = find_emoji_users(context.database, emoji).await;
 
 	if users.is_empty() {
-		let _ = interaction_reply(
-			context,
-			interaction,
-			format!("Nobody with a public inventory has {}.", emoji.as_str()),
-			!is_public,
-		)
-		.await;
+		let _ = interaction
+			.reply(
+				context.http,
+				format!("Nobody with a public inventory has {}.", emoji.as_str()),
+				!is_public,
+			)
+			.await;
 		return;
 	}
 	let mut output = if users.len() == 1 {
@@ -100,7 +91,7 @@ pub async fn execute(
 	}
 	output.push('.');
 
-	let _ = interaction_reply(context, interaction, output, !is_public).await;
+	let _ = interaction.reply(context.http, output, !is_public).await;
 }
 
 pub fn register(command: &mut CreateApplicationCommand) -> &mut CreateApplicationCommand {

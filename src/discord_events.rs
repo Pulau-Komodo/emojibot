@@ -1,9 +1,5 @@
 use itertools::Itertools;
-use serenity::{
-	async_trait,
-	model::prelude::{application_command::ApplicationCommandInteraction, *},
-	prelude::*,
-};
+use serenity::{async_trait, model::prelude::*, prelude::*};
 use sqlx::{Pool, Sqlite};
 
 use crate::{
@@ -23,48 +19,6 @@ impl DiscordEventHandler {
 			emoji_map,
 		}
 	}
-	async fn handle_application_command(
-		&self,
-		context: Context,
-		interaction: ApplicationCommandInteraction,
-	) {
-		match interaction.data.name.as_str() {
-			"inventory" => {
-				inventory::view::execute(&self.database, &self.emoji_map, context, interaction)
-					.await;
-			}
-			"group" => {
-				inventory::group::execute(&self.database, &self.emoji_map, context, interaction)
-					.await;
-			}
-			"who" => {
-				find_emoji::execute(&self.database, &self.emoji_map, context, interaction).await;
-			}
-			"trade" => {
-				trading::trade::execute(&self.database, &self.emoji_map, context, interaction)
-					.await;
-			}
-			"recycle" => {
-				trading::recycling::execute(&self.database, &self.emoji_map, context, interaction)
-					.await
-			}
-			"private" => {
-				user_settings::private::execute(&self.database, context, interaction).await;
-			}
-			"image" => {
-				images::rasterize::execute(&self.database, &self.emoji_map, context, interaction)
-					.await;
-			}
-			"generate" => {
-				images::generate::execute(&self.database, &self.emoji_map, context, interaction)
-					.await;
-			}
-			"testimage" => {
-				images::generate::execute_test(&self.emoji_map, context, interaction).await;
-			}
-			_ => (),
-		};
-	}
 }
 
 #[async_trait]
@@ -76,8 +30,27 @@ impl EventHandler for DiscordEventHandler {
 	}
 
 	async fn interaction_create(&self, context: Context, interaction: Interaction) {
+		let shard_manager = context.shard;
 		if let Interaction::ApplicationCommand(interaction) = interaction {
-			self.handle_application_command(context, interaction).await;
+			let context = crate::context::Context::new(
+				&self.database,
+				&self.emoji_map,
+				&context.http,
+				&context.cache,
+			);
+
+			match interaction.data.name.as_str() {
+				"inventory" => inventory::view::execute(context, interaction).await,
+				"group" => inventory::group::execute(context, interaction).await,
+				"who" => find_emoji::execute(context, interaction).await,
+				"trade" => trading::trade::execute(context, shard_manager, interaction).await,
+				"recycle" => trading::recycling::execute(context, interaction).await,
+				"private" => user_settings::private::execute(context, interaction).await,
+				"image" => images::rasterize::execute(context, interaction).await,
+				"generate" => images::generate::execute(context, interaction).await,
+				"testimage" => images::generate::execute_test(context, interaction).await,
+				_ => (),
+			};
 		}
 	}
 

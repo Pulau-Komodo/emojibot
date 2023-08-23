@@ -5,23 +5,14 @@ use serenity::{
 	model::prelude::{
 		application_command::ApplicationCommandInteraction, command::CommandOptionType, UserId,
 	},
-	prelude::Context,
 };
-use sqlx::{Pool, Sqlite};
 
 use crate::{
-	emoji::EmojiMap,
-	queries::get_user_emojis_grouped,
-	user_settings::private::is_private,
-	util::{get_name, interaction_reply},
+	context::Context, queries::get_user_emojis_grouped, user_settings::private::is_private,
+	util::ReplyShortcuts,
 };
 
-pub async fn execute(
-	database: &Pool<Sqlite>,
-	emoji_map: &EmojiMap,
-	context: Context,
-	mut interaction: ApplicationCommandInteraction,
-) {
+pub async fn execute(context: Context<'_>, mut interaction: ApplicationCommandInteraction) {
 	let subcommand = interaction.data.options.pop().unwrap();
 	let targets_own = subcommand.name == "own";
 	let target = if targets_own {
@@ -44,23 +35,28 @@ pub async fn execute(
 	.is_some();
 
 	let name = if !targets_own || is_public {
-		Some(get_name(&context, interaction.guild_id.unwrap(), target).await)
+		Some(
+			context
+				.get_user_name(interaction.guild_id.unwrap(), target)
+				.await,
+		)
 	} else {
 		None
 	};
 
-	if !targets_own && is_private(database, target).await {
-		let _ = interaction_reply(
-			context,
-			interaction,
-			format!("{}'s inventory is set to private.", name.unwrap()),
-			!is_public,
-		)
-		.await;
+	if !targets_own && is_private(context.database, target).await {
+		let _ = interaction
+			.reply(
+				context.http,
+				format!("{}'s inventory is set to private.", name.unwrap()),
+				!is_public,
+			)
+			.await;
 		return;
 	}
 
-	let (groups, ungrouped) = get_user_emojis_grouped(database, emoji_map, target).await;
+	let (groups, ungrouped) =
+		get_user_emojis_grouped(context.database, context.emoji_map, target).await;
 	let emoji_count = groups
 		.iter()
 		.chain(&ungrouped)
@@ -69,7 +65,8 @@ pub async fn execute(
 		let message = name
 			.map(|name| Cow::from(format!("{name} has no emojis. 🤔")))
 			.unwrap_or_else(|| Cow::from("You have no emojis. 🤔"));
-		interaction_reply(context, interaction, message, !is_public)
+		interaction
+			.reply(context.http, message, !is_public)
 			.await
 			.unwrap();
 		return;
@@ -89,7 +86,8 @@ pub async fn execute(
 	}
 
 	output.push('.');
-	interaction_reply(context, interaction, output, !is_public)
+	interaction
+		.reply(context.http, output, !is_public)
 		.await
 		.unwrap();
 }

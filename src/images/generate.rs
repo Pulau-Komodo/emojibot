@@ -15,15 +15,15 @@ use serenity::{
 		},
 		Permissions,
 	},
-	prelude::Context,
 };
 use sqlx::{Pool, Sqlite};
 
 use crate::{
+	context::Context,
 	emoji::EmojiMap,
 	emojis_with_counts::EmojisWithCounts,
 	inventory::queries::get_group_contents,
-	util::{ephemeral_reply, parse_emoji_input},
+	util::{parse_emoji_input, ReplyShortcuts},
 };
 
 use super::read_emoji_svg;
@@ -138,11 +138,7 @@ async fn parse_emoji_and_group_input<'s>(
 	Ok(EmojisWithCounts::from_flat(&emojis))
 }
 
-pub async fn execute_test(
-	emoji_map: &EmojiMap,
-	context: Context,
-	interaction: ApplicationCommandInteraction,
-) {
+pub async fn execute_test(context: Context<'_>, interaction: ApplicationCommandInteraction) {
 	let input_emojis = interaction
 		.data
 		.options
@@ -151,10 +147,10 @@ pub async fn execute_test(
 		.and_then(|value| value.as_str())
 		.unwrap()
 		.trim();
-	let emojis = match parse_emoji_input(emoji_map, input_emojis) {
+	let emojis = match parse_emoji_input(context.emoji_map, input_emojis) {
 		Ok(emojis) => emojis,
 		Err(error) => {
-			let _ = ephemeral_reply(context, interaction, error).await;
+			let _ = interaction.ephemeral_reply(context.http, error).await;
 			return;
 		}
 	};
@@ -167,7 +163,7 @@ pub async fn execute_test(
 			Some(add_rotation_margin(image))
 		}
 		).collect::<Option<Vec<_>>>() else {
-			let _ = ephemeral_reply(context, interaction, "Some file missing").await;
+			let _ = interaction.ephemeral_reply(context.http, "Some file missing").await;
 			return;
 		};
 		let mut canvas = RgbaImage::new(400, 200);
@@ -208,12 +204,7 @@ pub fn register_test(command: &mut CreateApplicationCommand) -> &mut CreateAppli
 		})
 }
 
-pub async fn execute(
-	database: &Pool<Sqlite>,
-	emoji_map: &EmojiMap,
-	context: Context,
-	interaction: ApplicationCommandInteraction,
-) {
+pub async fn execute(context: Context<'_>, interaction: ApplicationCommandInteraction) {
 	let input = interaction
 		.data
 		.options
@@ -221,19 +212,27 @@ pub async fn execute(
 		.and_then(|option| option.value.as_ref())
 		.and_then(|value| value.as_str())
 		.unwrap();
-	let emojis =
-		match parse_emoji_and_group_input(database, emoji_map, interaction.user.id, input).await {
-			Ok(emojis) => emojis,
-			Err(message) => {
-				let _ = ephemeral_reply(context, interaction, message).await;
-				return;
-			}
-		};
+	let emojis = match parse_emoji_and_group_input(
+		context.database,
+		context.emoji_map,
+		interaction.user.id,
+		input,
+	)
+	.await
+	{
+		Ok(emojis) => emojis,
+		Err(message) => {
+			let _ = interaction.ephemeral_reply(context.http, message).await;
+			return;
+		}
+	};
 	if !emojis
-		.are_owned_by_user(database, interaction.user.id)
+		.are_owned_by_user(context.database, interaction.user.id)
 		.await
 	{
-		let _ = ephemeral_reply(context, interaction, "You don't own all specified emojis.").await;
+		let _ = interaction
+			.ephemeral_reply(context.http, "You don't own all specified emojis.")
+			.await;
 		return;
 	}
 
@@ -244,7 +243,7 @@ pub async fn execute(
 		Some(add_rotation_margin(image))
 	}
 	).collect::<Option<Vec<_>>>() else {
-		let _ = ephemeral_reply(context, interaction, "Some file missing.").await;
+		let _ = interaction.ephemeral_reply(context.http, "Some file missing.").await;
 		return;
 	};
 

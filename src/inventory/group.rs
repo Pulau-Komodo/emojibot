@@ -6,14 +6,12 @@ use serenity::{
 		application_command::{ApplicationCommandInteraction, CommandDataOption},
 		command::CommandOptionType,
 	},
-	prelude::Context,
 };
-use sqlx::{Pool, Sqlite};
 
 use crate::{
-	emoji::EmojiMap,
+	context::Context,
 	emojis_with_counts::EmojisWithCounts,
-	util::{ephemeral_reply, get_and_parse_emoji_option},
+	util::{get_and_parse_emoji_option, ReplyShortcuts},
 };
 
 use super::queries::{
@@ -21,63 +19,35 @@ use super::queries::{
 	reposition_group, RepositionOutcome,
 };
 
-pub async fn execute(
-	database: &Pool<Sqlite>,
-	emoji_map: &EmojiMap,
-	context: Context,
-	mut interaction: ApplicationCommandInteraction,
-) {
+pub async fn execute(context: Context<'_>, mut interaction: ApplicationCommandInteraction) {
 	let subcommand = interaction.data.options.pop().unwrap();
 	match subcommand.name.as_str() {
 		"add" => {
-			add(
-				database,
-				emoji_map,
-				context,
-				interaction,
-				subcommand.options,
-			)
-			.await;
+			add(context, interaction, subcommand.options).await;
 		}
 		"remove" => {
-			remove(
-				database,
-				emoji_map,
-				context,
-				interaction,
-				subcommand.options,
-			)
-			.await;
+			remove(context, interaction, subcommand.options).await;
 		}
 		"rename" => {
-			rename(database, context, interaction, subcommand.options).await;
+			rename(context, interaction, subcommand.options).await;
 		}
 		"list" => {
-			list(database, context, interaction).await;
+			list(context, interaction).await;
 		}
 		"view" => {
-			view(
-				database,
-				emoji_map,
-				context,
-				interaction,
-				subcommand.options,
-			)
-			.await;
+			view(context, interaction, subcommand.options).await;
 		}
 		"reposition" => {
 			// let _ = ephemeral_reply(context, interaction, "Not yet implemented.").await;
 			// return;
-			reposition(database, context, interaction, subcommand.options).await;
+			reposition(context, interaction, subcommand.options).await;
 		}
 		_ => panic!("Received invalid subcommand name."),
 	}
 }
 
 async fn add(
-	database: &Pool<Sqlite>,
-	emoji_map: &EmojiMap,
-	context: Context,
+	context: Context<'_>,
 	interaction: ApplicationCommandInteraction,
 	options: Vec<CommandDataOption>,
 ) {
@@ -87,10 +57,10 @@ async fn add(
 		.and_then(|value| value.as_str())
 		.unwrap();
 
-	let emojis = match get_and_parse_emoji_option(emoji_map, &options, 1) {
+	let emojis = match get_and_parse_emoji_option(context.emoji_map, &options, 1) {
 		Ok(emojis) => emojis,
 		Err(error) => {
-			let _ = ephemeral_reply(context, interaction, error).await;
+			let _ = interaction.ephemeral_reply(context.http, error).await;
 			return;
 		}
 	};
@@ -99,7 +69,7 @@ async fn add(
 	let emoji_count = emojis.emoji_count();
 
 	let (group_name, added_emojis) =
-		add_to_group(database, interaction.user.id, group_name, &emojis).await;
+		add_to_group(context.database, interaction.user.id, group_name, &emojis).await;
 
 	if added_emojis.is_empty() {
 		let message = match emoji_count {
@@ -107,7 +77,7 @@ async fn add(
 			2 => "You do not have either of those emojis.",
 			_ => "You did not have any of those emojis.",
 		};
-		let _ = ephemeral_reply(context, interaction, message).await;
+		let _ = interaction.ephemeral_reply(context.http, message).await;
 		return;
 	}
 
@@ -121,13 +91,11 @@ async fn add(
 		n => write!(message, " You did not have the other {}.", n).unwrap(),
 	}
 
-	let _ = ephemeral_reply(context, interaction, message).await;
+	let _ = interaction.ephemeral_reply(context.http, message).await;
 }
 
 async fn remove(
-	database: &Pool<Sqlite>,
-	emoji_map: &EmojiMap,
-	context: Context,
+	context: Context<'_>,
 	interaction: ApplicationCommandInteraction,
 	options: Vec<CommandDataOption>,
 ) {
@@ -136,10 +104,10 @@ async fn remove(
 		.and_then(|option| option.value.as_ref())
 		.and_then(|value| value.as_str())
 		.unwrap();
-	let emojis = match get_and_parse_emoji_option(emoji_map, &options, 1) {
+	let emojis = match get_and_parse_emoji_option(context.emoji_map, &options, 1) {
 		Ok(emojis) => emojis,
 		Err(error) => {
-			let _ = ephemeral_reply(context, interaction, error).await;
+			let _ = interaction.ephemeral_reply(context.http, error).await;
 			return;
 		}
 	};
@@ -147,7 +115,8 @@ async fn remove(
 	let emojis = EmojisWithCounts::from_flat(&emojis);
 	let emoji_count = emojis.emoji_count();
 
-	let degrouped_emojis = remove_from_group(database, interaction.user.id, &emojis, group).await;
+	let degrouped_emojis =
+		remove_from_group(context.database, interaction.user.id, &emojis, group).await;
 
 	if degrouped_emojis.is_empty() {
 		let message = match emoji_count {
@@ -155,7 +124,7 @@ async fn remove(
 			2 => "Neither of those emojis are in that group.",
 			_ => "None of those emojis are in that group.",
 		};
-		let _ = ephemeral_reply(context, interaction, message).await;
+		let _ = interaction.ephemeral_reply(context.http, message).await;
 		return;
 	}
 
@@ -175,12 +144,11 @@ async fn remove(
 		n => write!(message, " The other {} were not in that group.", n).unwrap(),
 	}
 
-	let _ = ephemeral_reply(context, interaction, message).await;
+	let _ = interaction.ephemeral_reply(context.http, message).await;
 }
 
 async fn rename(
-	database: &Pool<Sqlite>,
-	context: Context,
+	context: Context<'_>,
 	interaction: ApplicationCommandInteraction,
 	options: Vec<CommandDataOption>,
 ) {
@@ -195,21 +163,17 @@ async fn rename(
 		.and_then(|value| value.as_str())
 		.unwrap();
 
-	let Ok(old_name) = rename_group(database, interaction.user.id, group, new_name).await else {
-		let _ = ephemeral_reply(context, interaction, format!("You have no group called \"{group}\".")).await;
+	let Ok(old_name) = rename_group(context.database, interaction.user.id, group, new_name).await else {
+		let _ = interaction.ephemeral_reply(context.http, format!("You have no group called \"{group}\".")).await;
 		return;
 	};
 
 	let message = format!("Renamed group {} to {}.", old_name, new_name);
-	let _ = ephemeral_reply(context, interaction, message).await;
+	let _ = interaction.ephemeral_reply(context.http, message).await;
 }
 
-async fn list(
-	database: &Pool<Sqlite>,
-	context: Context,
-	interaction: ApplicationCommandInteraction,
-) {
-	let (groups, ungrouped) = list_groups(database, interaction.user.id).await;
+async fn list(context: Context<'_>, interaction: ApplicationCommandInteraction) {
+	let (groups, ungrouped) = list_groups(context.database, interaction.user.id).await;
 
 	let s = if ungrouped == 1 { "" } else { "s" };
 	let message = match groups.len() {
@@ -242,13 +206,11 @@ async fn list(
 		}
 	};
 
-	let _ = ephemeral_reply(context, interaction, message).await;
+	let _ = interaction.ephemeral_reply(context.http, message).await;
 }
 
 async fn view(
-	database: &Pool<Sqlite>,
-	emoji_map: &EmojiMap,
-	context: Context,
+	context: Context<'_>,
 	interaction: ApplicationCommandInteraction,
 	options: Vec<CommandDataOption>,
 ) {
@@ -258,18 +220,17 @@ async fn view(
 		.and_then(|value| value.as_str())
 		.unwrap();
 
-	let Some((name, emojis)) = group_name_and_contents(database, emoji_map, interaction.user.id, group).await else {
-			_ = ephemeral_reply(context, interaction, format!("You have no group called \"{group}\".")).await;
+	let Some((name, emojis)) = group_name_and_contents(context.database, context.emoji_map, interaction.user.id, group).await else {
+			_ = interaction.ephemeral_reply(context.http, format!("You have no group called \"{group}\".")).await;
 			return;
 		};
 
 	let message = format!("Contents of group {}: {}", name, emojis);
-	_ = ephemeral_reply(context, interaction, message).await;
+	_ = interaction.ephemeral_reply(context.http, message).await;
 }
 
 async fn reposition(
-	database: &Pool<Sqlite>,
-	context: Context,
+	context: Context<'_>,
 	interaction: ApplicationCommandInteraction,
 	options: Vec<CommandDataOption>,
 ) {
@@ -278,18 +239,19 @@ async fn reposition(
 		.and_then(|option| option.value.as_ref())
 		.and_then(|value| value.as_str())
 		.unwrap();
-	let Some::<u32>(new_position) = options.get(1)
-	.and_then(|option| option.value.as_ref())
-	.and_then(|value| value.as_u64())
-	.and_then(|num| num.try_into().ok())
+	let Some::<u32>(new_position) = options
+		.get(1)
+		.and_then(|option| option.value.as_ref())
+		.and_then(|value| value.as_u64())
+		.and_then(|num| num.try_into().ok())
 	 else {
 		eprintln!("Somehow received a number that can't be represented as u32.");
-		let _ = ephemeral_reply(context, interaction, "Error: invalid number.").await;
+		let _ = interaction.ephemeral_reply(context.http, "Error: invalid number.").await;
 		return;
 	 };
 
-	let Ok((name, outcome, old_position, group_count)) = reposition_group(database, interaction.user.id, group, new_position).await else {
-		let _ = ephemeral_reply(context, interaction, format!("You have no group called \"{group}\".")).await;
+	let Ok((name, outcome, old_position, group_count)) = reposition_group(context.database, interaction.user.id, group, new_position).await else {
+		let _ = interaction.ephemeral_reply(context.http, format!("You have no group called \"{group}\".")).await;
 		return;
 	};
 
@@ -330,7 +292,7 @@ async fn reposition(
 		}
 	};
 
-	let _ = ephemeral_reply(context, interaction, message).await;
+	let _ = interaction.ephemeral_reply(context.http, message).await;
 }
 
 pub fn register(command: &mut CreateApplicationCommand) -> &mut CreateApplicationCommand {

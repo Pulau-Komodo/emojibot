@@ -5,6 +5,7 @@ use emoji::make_emoji_map;
 use serenity::prelude::GatewayIntents;
 use sqlx::sqlite::SqlitePoolOptions;
 
+mod context;
 mod daily_emoji;
 mod discord_events;
 mod emoji;

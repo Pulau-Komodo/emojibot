@@ -3,18 +3,18 @@ use serenity::{
 	model::prelude::{
 		application_command::ApplicationCommandInteraction, command::CommandOptionType, UserId,
 	},
-	prelude::Context,
 };
 use sqlx::{query, Pool, Sqlite};
 
 use crate::{
-	emoji::{Emoji, EmojiMap},
+	context::Context,
+	emoji::Emoji,
 	emojis_with_counts::EmojisWithCounts,
 	inventory::queries::remove_empty_groups,
 	queries::give_emoji,
 	trading::{queries::log_trade, trade_offer::TradeOffer},
 	user_settings::private::is_private,
-	util::{ephemeral_reply, get_name, parse_emoji_input, public_reply},
+	util::{parse_emoji_input, ReplyShortcuts},
 };
 
 use super::queries::remove_invalidated_trade_offers;
@@ -71,12 +71,7 @@ async fn recycle(database: &Pool<Sqlite>, user: UserId, emojis: EmojisWithCounts
 	random_emoji
 }
 
-pub async fn execute(
-	database: &Pool<Sqlite>,
-	emoji_map: &EmojiMap,
-	context: Context,
-	interaction: ApplicationCommandInteraction,
-) {
+pub async fn execute(context: Context<'_>, interaction: ApplicationCommandInteraction) {
 	let input = interaction
 		.data
 		.options
@@ -84,35 +79,41 @@ pub async fn execute(
 		.and_then(|option| option.value.as_ref())
 		.and_then(|value| value.as_str())
 		.unwrap();
-	let emojis = match parse_emoji_input(emoji_map, input) {
+	let emojis = match parse_emoji_input(context.emoji_map, input) {
 		Ok(emojis) => emojis,
 		Err(message) => {
-			let _ = ephemeral_reply(context, interaction, message).await;
+			let _ = interaction.ephemeral_reply(context.http, message).await;
 			return;
 		}
 	};
 	if emojis.len() != 3 {
-		let _ = ephemeral_reply(context, interaction, "You must specify exactly 3 emojis.").await;
+		let _ = interaction
+			.ephemeral_reply(context.http, "You must specify exactly 3 emojis.")
+			.await;
 		return;
 	}
 	let emojis = EmojisWithCounts::from_flat(&emojis);
 	if !emojis
-		.are_owned_by_user(database, interaction.user.id)
+		.are_owned_by_user(context.database, interaction.user.id)
 		.await
 	{
-		let _ = ephemeral_reply(context, interaction, "You don't own all specified emojis.").await;
+		let _ = interaction
+			.ephemeral_reply(context.http, "You don't own all specified emojis.")
+			.await;
 		return;
 	}
 
-	let emoji = recycle(database, interaction.user.id, emojis.clone()).await;
+	let emoji = recycle(context.database, interaction.user.id, emojis.clone()).await;
 
-	if is_private(database, interaction.user.id).await {
+	if is_private(context.database, interaction.user.id).await {
 		let message = format!("You recycled {emojis} and got {emoji}.");
-		let _ = ephemeral_reply(context, interaction, message).await;
+		let _ = interaction.ephemeral_reply(context.http, message).await;
 	} else {
-		let name = get_name(&context, interaction.guild_id.unwrap(), interaction.user.id).await;
+		let name = context
+			.get_user_name(interaction.guild_id.unwrap(), interaction.user.id)
+			.await;
 		let message = format!("{name} recycled {emojis} and got {emoji}.");
-		let _ = public_reply(context, interaction, message).await;
+		let _ = interaction.public_reply(context.http, message).await;
 	}
 }
 

@@ -5,28 +5,25 @@ mod trade_offer;
 
 use serenity::{
 	builder::CreateComponents,
+	client::bridge::gateway::ShardMessenger,
 	model::prelude::{
 		application_command::{ApplicationCommandInteraction, CommandDataOption},
 		component::ButtonStyle,
 		GuildId, InteractionResponseType, UserId,
 	},
-	prelude::Context,
 };
 use sqlx::{Pool, Sqlite};
 use std::fmt::Write;
 
 use crate::{
-	emoji::EmojiMap,
-	emojis_with_counts::EmojisWithCounts,
-	util::{get_and_parse_emoji_option, get_name},
+	context::Context, emoji::EmojiMap, emojis_with_counts::EmojisWithCounts,
+	util::get_and_parse_emoji_option,
 };
 
 use self::{queries::*, trade_offer::TradeOffer};
 
 pub(super) async fn try_offer_trade(
-	executor: &Pool<Sqlite>,
-	emoji_map: &EmojiMap,
-	context: &Context,
+	context: Context<'_>,
 	options: Vec<CommandDataOption>,
 	guild: GuildId,
 	user: UserId,
@@ -35,25 +32,29 @@ pub(super) async fn try_offer_trade(
 	if user == target_user {
 		return Err(String::from("You can't trade yourself."));
 	}
-	if does_trade_offer_exist(executor, user, target_user).await {
+	if does_trade_offer_exist(context.database, user, target_user).await {
 		return Err(String::from("You already have a trade offer to that user."));
 	}
-	let offer = get_and_parse_emoji_option(emoji_map, &options, 1)?;
+	let offer = get_and_parse_emoji_option(context.emoji_map, &options, 1)?;
 	if offer.is_empty() {
 		return Err(String::from("Offer is empty."));
 	}
-	let request = get_and_parse_emoji_option(emoji_map, &options, 2)?;
+	let request = get_and_parse_emoji_option(context.emoji_map, &options, 2)?;
 	if request.is_empty() {
 		return Err(String::from("Request is empty."));
 	}
 	let offer = EmojisWithCounts::from_flat(&offer);
 	let request = EmojisWithCounts::from_flat(&request);
 	let trade_offer = TradeOffer::new(user, target_user, offer, request)?;
-	if !trade_offer.offer().are_owned_by_user(executor, user).await {
+	if !trade_offer
+		.offer()
+		.are_owned_by_user(context.database, user)
+		.await
+	{
 		return Err(String::from("You don't have those emojis to offer."));
 	}
 
-	let name = get_name(context, guild, target_user).await;
+	let name = context.get_user_name(guild, target_user).await;
 	let output = format!(
 		"You are now offering {} in return for {}'s {}.",
 		trade_offer.offer(),
@@ -61,60 +62,56 @@ pub(super) async fn try_offer_trade(
 		trade_offer.request()
 	);
 
-	add_trade_offer(executor, trade_offer).await;
+	add_trade_offer(context.database, trade_offer).await;
 
 	Ok(output)
 }
 
 pub(super) async fn try_cancel_offer(
-	executor: &Pool<Sqlite>,
-	context: &Context,
+	context: Context<'_>,
 	guild: GuildId,
 	user: UserId,
 	target_user: UserId,
 ) -> Result<String, String> {
-	let name = get_name(context, guild, target_user).await;
-	if !does_trade_offer_exist(executor, user, target_user).await {
+	let name = context.get_user_name(guild, target_user).await;
+	if !does_trade_offer_exist(context.database, user, target_user).await {
 		return Err(format!("You have no trade offer to {}.", name));
 	}
 
-	remove_trade_offer(executor, user, target_user).await;
+	remove_trade_offer(context.database, user, target_user).await;
 
 	Ok(format!("Trade offer to {} rescinded.", name))
 }
 
 pub(super) async fn try_reject_offer(
-	executor: &Pool<Sqlite>,
-	context: &Context,
+	context: Context<'_>,
 	guild: GuildId,
 	user: UserId,
 	other_user: UserId,
 ) -> Result<String, String> {
-	let name = get_name(context, guild, other_user).await;
-	if !does_trade_offer_exist(executor, other_user, user).await {
+	let name = context.get_user_name(guild, other_user).await;
+	if !does_trade_offer_exist(context.database, other_user, user).await {
 		return Err(format!("You have no trade offer from {}.", name));
 	}
 
-	remove_trade_offer(executor, other_user, user).await;
+	remove_trade_offer(context.database, other_user, user).await;
 
 	Ok(format!("Trade offer from {} rejected.", name))
 }
 
 pub(super) async fn view_offers(
-	executor: &Pool<Sqlite>,
-	emoji_map: &EmojiMap,
-	context: &Context,
+	context: Context<'_>,
 	guild: GuildId,
 	user: UserId,
 ) -> Result<String, String> {
-	let outgoing = get_outgoing_trade_offers(executor, emoji_map, user).await;
-	let incoming = get_incoming_trade_offers(executor, emoji_map, user).await;
+	let outgoing = get_outgoing_trade_offers(context.database, context.emoji_map, user).await;
+	let incoming = get_incoming_trade_offers(context.database, context.emoji_map, user).await;
 
 	let mut output = String::new();
 	if !outgoing.is_empty() {
 		output.push_str("Outgoing:\n");
 		for trade in outgoing {
-			let name = get_name(context, guild, trade.target_user()).await;
+			let name = context.get_user_name(guild, trade.target_user()).await;
 			output
 				.write_fmt(format_args!(
 					"You are offering {} for {}'s {}.\n",
@@ -128,7 +125,7 @@ pub(super) async fn view_offers(
 	if !incoming.is_empty() {
 		output.push_str("Incoming:\n");
 		for trade in incoming {
-			let name = get_name(context, guild, trade.offering_user()).await;
+			let name = context.get_user_name(guild, trade.offering_user()).await;
 			output
 				.write_fmt(format_args!(
 					"{} is offering {} for your {}.\n",
@@ -146,16 +143,21 @@ pub(super) async fn view_offers(
 }
 
 pub(super) async fn try_accept_offer(
-	executor: &Pool<Sqlite>,
-	emoji_map: &EmojiMap,
-	context: &Context,
+	context: Context<'_>,
+	shard_messenger: ShardMessenger,
 	interaction: &ApplicationCommandInteraction,
 	guild: GuildId,
 	accepting_user: UserId,
 	offering_user: UserId,
 ) -> Result<(), String> {
-	let offerer_name = get_name(context, guild, offering_user).await;
-	let trade = match validate_trade_offer(executor, emoji_map, offering_user, accepting_user).await
+	let offerer_name = context.get_user_name(guild, offering_user).await;
+	let trade = match validate_trade_offer(
+		context.database,
+		context.emoji_map,
+		offering_user,
+		accepting_user,
+	)
+	.await
 	{
 		TradeOfferValidation::NoTrade => Err(format!(
 			"You do not have a trade offer from {offerer_name}."
@@ -213,7 +215,7 @@ pub(super) async fn try_accept_offer(
 		.await
 		.map_err(|_| String::from("Error retrieving interaction response."))?;
 	let button_press = message
-		.await_component_interaction(context)
+		.await_component_interaction(shard_messenger)
 		.collect_limit(1)
 		.timeout(std::time::Duration::from_secs(60))
 		.await;
@@ -221,10 +223,15 @@ pub(super) async fn try_accept_offer(
 	if let Some(button_press) = button_press {
 		match button_press.data.custom_id.as_str() {
 			"yes" => {
-				let accepter_name = get_name(context, guild, accepting_user).await;
-				let result =
-					try_confirm_trade(executor, emoji_map, trade, offerer_name, accepter_name)
-						.await;
+				let accepter_name = context.get_user_name(guild, accepting_user).await;
+				let result = try_confirm_trade(
+					context.database,
+					context.emoji_map,
+					trade,
+					offerer_name,
+					accepter_name,
+				)
+				.await;
 				match result {
 					Ok(content) => {
 						let _ = button_press

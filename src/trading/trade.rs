@@ -1,20 +1,18 @@
 use serenity::{
 	builder::CreateApplicationCommand,
+	client::bridge::gateway::ShardMessenger,
 	model::prelude::{
 		application_command::ApplicationCommandInteraction, command::CommandOptionType, UserId,
 	},
-	prelude::Context,
 };
-use sqlx::{Pool, Sqlite};
 
-use crate::{emoji::EmojiMap, util::interaction_reply};
+use crate::{context::Context, util::ReplyShortcuts};
 
 use super::{try_accept_offer, try_cancel_offer, try_offer_trade, try_reject_offer, view_offers};
 
 pub async fn execute(
-	database: &Pool<Sqlite>,
-	emoji_map: &EmojiMap,
-	context: Context,
+	context: Context<'_>,
+	shard_messenger: ShardMessenger,
 	mut interaction: ApplicationCommandInteraction,
 ) {
 	let subcommand = interaction.data.options.pop().unwrap();
@@ -31,9 +29,7 @@ pub async fn execute(
 	let result = match subcommand.name.as_str() {
 		"offer" => {
 			try_offer_trade(
-				database,
-				emoji_map,
-				&context,
+				context,
 				subcommand.options,
 				guild,
 				user,
@@ -41,14 +37,11 @@ pub async fn execute(
 			)
 			.await
 		}
-		"withdraw" => {
-			try_cancel_offer(database, &context, guild, user, argument_user.unwrap()).await
-		}
+		"withdraw" => try_cancel_offer(context, guild, user, argument_user.unwrap()).await,
 		"accept" => {
 			let result = try_accept_offer(
-				database,
-				emoji_map,
-				&context,
+				context,
+				shard_messenger,
 				&interaction,
 				guild,
 				user,
@@ -61,16 +54,16 @@ pub async fn execute(
 				return;
 			}
 		}
-		"reject" => try_reject_offer(database, &context, guild, user, argument_user.unwrap()).await,
+		"reject" => try_reject_offer(context, guild, user, argument_user.unwrap()).await,
 		"view" => {
 			ephemeral = true;
-			view_offers(database, emoji_map, &context, guild, user).await
+			view_offers(context, guild, user).await
 		}
 		_ => panic!("Received an invalid interaction subcommand."),
 	};
 	let _ = match result {
-		Ok(message) => interaction_reply(context, interaction, message, ephemeral).await,
-		Err(error) => interaction_reply(context, interaction, error, true).await,
+		Ok(message) => interaction.reply(context.http, message, ephemeral).await,
+		Err(error) => interaction.ephemeral_reply(context.http, error).await,
 	};
 }
 
