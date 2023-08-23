@@ -179,7 +179,7 @@ pub(super) async fn try_accept_offer(
 	} else {
 		""
 	};
-	let content = format!("You are about to accept the trade offer from {offerer_name}.\nYou will **lose** the following emoji{s1}: {}\nYou will **gain** the following emoji{s2}: {}nDo you want to proceed?", trade.request(), trade.offer());
+	let content = format!("You are about to accept the trade offer from {offerer_name}.\nYou will **lose** the following emoji{s1}: {}\nYou will **gain** the following emoji{s2}: {}\nDo you want to proceed?", trade.request(), trade.offer());
 
 	let _ = interaction
 		.create_interaction_response(&context.http, |interaction| {
