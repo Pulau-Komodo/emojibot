@@ -140,39 +140,67 @@ pub(super) async fn remove_from_group(
 	executor: &Pool<Sqlite>,
 	user: UserId,
 	emojis: &EmojisWithCounts,
-	group: &str,
+	group: Option<&str>,
 ) -> EmojisWithCounts {
 	let user_id = user.0 as i64;
 	let mut degrouped_emojis = Vec::new();
 
 	let mut transaction = executor.begin().await.unwrap();
+
 	for (emoji, count) in emojis {
 		let emoji_str = emoji.as_str();
-		let rows_affected = query!(
-			"
-			UPDATE emoji_inventory
-			SET group_id = NULL
-			WHERE user = ? AND emoji = ? AND emoji_inventory.group_id IS NOT NULL AND rowid IN (
-				SELECT emoji_inventory.rowid
-				FROM emoji_inventory
-				LEFT JOIN emoji_inventory_groups
-				ON emoji_inventory.group_id = emoji_inventory_groups.id
-				WHERE emoji_inventory.user = ? AND emoji_inventory.emoji = ? AND emoji_inventory_groups.name = ?
-				ORDER BY sort_order DESC
-				LIMIT ?
+		let rows_affected = if let Some(group) = group {
+			query!(
+				"
+				UPDATE emoji_inventory
+				SET group_id = NULL
+				WHERE user = ? AND emoji = ? AND emoji_inventory.group_id IS NOT NULL AND rowid IN (
+					SELECT emoji_inventory.rowid
+					FROM emoji_inventory
+					LEFT JOIN emoji_inventory_groups
+					ON emoji_inventory.group_id = emoji_inventory_groups.id
+					WHERE emoji_inventory.user = ? AND emoji_inventory.emoji = ? AND emoji_inventory_groups.name = ?
+					ORDER BY sort_order DESC
+					LIMIT ?
+				)
+				",
+				user_id,
+				emoji_str,
+				user_id,
+				emoji_str,
+				group,
+				count
 			)
-			",
-			user_id,
-			emoji_str,
-			user_id,
-			emoji_str,
-			group,
-			count
-		)
-		.execute(&mut *transaction)
-		.await
-		.unwrap()
-		.rows_affected();
+			.execute(&mut *transaction)
+			.await
+			.unwrap()
+			.rows_affected()
+		} else {
+			query!(
+				"
+				UPDATE emoji_inventory
+				SET group_id = NULL
+				WHERE user = ? AND emoji = ? AND rowid IN (
+					SELECT emoji_inventory.rowid
+					FROM emoji_inventory
+					LEFT JOIN emoji_inventory_groups
+					ON emoji_inventory.group_id = emoji_inventory_groups.id
+					WHERE emoji_inventory.user = ? AND emoji_inventory.emoji = ?
+					ORDER BY IFNULL(sort_order, 9223372036854775807) DESC
+					LIMIT ?
+				)
+				",
+				user_id,
+				emoji_str,
+				user_id,
+				emoji_str,
+				count
+			)
+			.execute(&mut *transaction)
+			.await
+			.unwrap()
+			.rows_affected()
+		};
 		if rows_affected > 0 {
 			degrouped_emojis.push((*emoji, rows_affected as u32));
 		}
@@ -329,7 +357,7 @@ pub(super) enum RepositionOutcome {
 }
 
 /// Returns Err if no such group existed, otherwise Ok(name, old_position, group_count).
-/// 
+///
 /// Note: in Rust code and in user commands, the ordering starts with 0, but in the database it starts with 1.
 pub(super) async fn reposition_group(
 	database: &Pool<Sqlite>,

@@ -99,30 +99,39 @@ async fn remove(
 	interaction: ApplicationCommandInteraction,
 	options: Vec<CommandDataOption>,
 ) {
-	let group = options
-		.get(0)
-		.and_then(|option| option.value.as_ref())
-		.and_then(|value| value.as_str())
-		.unwrap();
-	let emojis = match get_and_parse_emoji_option(context.emoji_map, &options, 1) {
-		Ok(emojis) => emojis,
-		Err(error) => {
-			let _ = interaction.ephemeral_reply(context.http, error).await;
-			return;
-		}
-	};
+	let subcommand = options.get(0).unwrap();
+	let group = (subcommand.name.as_str() == "from").then(|| {
+		subcommand
+			.options
+			.get(0)
+			.and_then(|option| option.value.as_ref())
+			.and_then(|value| value.as_str())
+			.unwrap()
+	});
+	let emojis_index = if group.is_some() { 1 } else { 0 };
+	let emojis =
+		match get_and_parse_emoji_option(context.emoji_map, &subcommand.options, emojis_index) {
+			Ok(emojis) => emojis,
+			Err(error) => {
+				let _ = interaction.ephemeral_reply(context.http, error).await;
+				return;
+			}
+		};
 
+	let emoji_count = emojis.len() as u32;
 	let emojis = EmojisWithCounts::from_flat(&emojis);
-	let emoji_count = emojis.emoji_count();
 
 	let degrouped_emojis =
 		remove_from_group(context.database, interaction.user.id, &emojis, group).await;
 
 	if degrouped_emojis.is_empty() {
-		let message = match emoji_count {
-			1 => "That emoji is not in that group.",
-			2 => "Neither of those emojis are in that group.",
-			_ => "None of those emojis are in that group.",
+		let message = match (emoji_count, group.is_some()) {
+			(1, true) => "That emoji is not in that group.",
+			(2, true) => "Neither of those emojis are in that group.",
+			(_, true) => "None of those emojis are in that group.",
+			(1, false) => "You do not have that emoji.",
+			(2, false) => "You do not have either of those emojis.",
+			(_, false) => "You don't have any of those emojis.",
 		};
 		let _ = interaction.ephemeral_reply(context.http, message).await;
 		return;
@@ -138,10 +147,12 @@ async fn remove(
 	}
 	message.push_str(" now ungrouped.");
 
-	match skipped_emojis {
-		0 => (),
-		1 => message.push_str(" The other one was not in that group."),
-		n => write!(message, " The other {} were not in that group.", n).unwrap(),
+	match (skipped_emojis, group.is_some()) {
+		(0, _) => (),
+		(1, true) => message.push_str(" The other one was not in that group."),
+		(n, true) => write!(message, " The other {} were not in that group.", n).unwrap(),
+		(1, false) => message.push_str(" You did not have the other one."),
+		(n, false) => write!(message, " You did not have the other {}.", n).unwrap(),
 	}
 
 	let _ = interaction.ephemeral_reply(context.http, message).await;
@@ -163,8 +174,14 @@ async fn rename(
 		.and_then(|value| value.as_str())
 		.unwrap();
 
-	let Ok(old_name) = rename_group(context.database, interaction.user.id, group, new_name).await else {
-		let _ = interaction.ephemeral_reply(context.http, format!("You have no group called \"{group}\".")).await;
+	let Ok(old_name) = rename_group(context.database, interaction.user.id, group, new_name).await
+	else {
+		let _ = interaction
+			.ephemeral_reply(
+				context.http,
+				format!("You have no group called \"{group}\"."),
+			)
+			.await;
 		return;
 	};
 
@@ -220,10 +237,22 @@ async fn view(
 		.and_then(|value| value.as_str())
 		.unwrap();
 
-	let Some((name, emojis)) = group_name_and_contents(context.database, context.emoji_map, interaction.user.id, group).await else {
-			_ = interaction.ephemeral_reply(context.http, format!("You have no group called \"{group}\".")).await;
-			return;
-		};
+	let Some((name, emojis)) = group_name_and_contents(
+		context.database,
+		context.emoji_map,
+		interaction.user.id,
+		group,
+	)
+	.await
+	else {
+		_ = interaction
+			.ephemeral_reply(
+				context.http,
+				format!("You have no group called \"{group}\"."),
+			)
+			.await;
+		return;
+	};
 
 	let message = format!("Contents of group {}: {}", name, emojis);
 	_ = interaction.ephemeral_reply(context.http, message).await;
@@ -244,14 +273,23 @@ async fn reposition(
 		.and_then(|option| option.value.as_ref())
 		.and_then(|value| value.as_u64())
 		.and_then(|num| num.try_into().ok())
-	 else {
+	else {
 		eprintln!("Somehow received a number that can't be represented as u32.");
-		let _ = interaction.ephemeral_reply(context.http, "Error: invalid number.").await;
+		let _ = interaction
+			.ephemeral_reply(context.http, "Error: invalid number.")
+			.await;
 		return;
-	 };
+	};
 
-	let Ok((name, outcome, old_position, group_count)) = reposition_group(context.database, interaction.user.id, group, new_position).await else {
-		let _ = interaction.ephemeral_reply(context.http, format!("You have no group called \"{group}\".")).await;
+	let Ok((name, outcome, old_position, group_count)) =
+		reposition_group(context.database, interaction.user.id, group, new_position).await
+	else {
+		let _ = interaction
+			.ephemeral_reply(
+				context.http,
+				format!("You have no group called \"{group}\"."),
+			)
+			.await;
 		return;
 	};
 
@@ -324,21 +362,40 @@ pub fn register(command: &mut CreateApplicationCommand) -> &mut CreateApplicatio
 			option
 				.name("remove")
 				.description("Removes emojis from a group.")
-				.kind(CommandOptionType::SubCommand)
+				.kind(CommandOptionType::SubCommandGroup)
 				.create_sub_option(|option| {
 					option
-						.name("group")
-						.description("The group to remove the emojis from.")
-						.kind(CommandOptionType::String)
-						.max_length(50)
-						.required(true)
+						.name("from")
+						.description("Removes emojis from a specific group.")
+						.kind(CommandOptionType::SubCommand)
+						.create_sub_option(|option| {
+							option
+								.name("group")
+								.description("The group to remove the emojis from.")
+								.kind(CommandOptionType::String)
+								.max_length(50)
+								.required(true)
+						})
+						.create_sub_option(|option| {
+							option
+								.name("emojis")
+								.description("The emojis to remove from the group.")
+								.kind(CommandOptionType::String)
+								.required(true)
+						})
 				})
 				.create_sub_option(|option| {
 					option
 						.name("emojis")
-						.description("The emojis to remove from the group.")
-						.kind(CommandOptionType::String)
-						.required(true)
+						.description("Removes emojis from whatever group.")
+						.kind(CommandOptionType::SubCommand)
+						.create_sub_option(|option| {
+							option
+								.name("emojis")
+								.description("The emojis to remove from whatever group they're in.")
+								.kind(CommandOptionType::String)
+								.required(true)
+						})
 				})
 		})
 		.create_option(|option| {
