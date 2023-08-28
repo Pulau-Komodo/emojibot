@@ -16,7 +16,7 @@ use crate::{
 
 use super::queries::{
 	add_to_group, group_name_and_contents, list_groups, remove_from_group, rename_group,
-	reposition_group, RepositionOutcome,
+	reposition_group, RenameGroupError, RepositionOutcome,
 };
 
 pub async fn execute(context: Context<'_>, mut interaction: ApplicationCommandInteraction) {
@@ -174,15 +174,27 @@ async fn rename(
 		.and_then(|value| value.as_str())
 		.unwrap();
 
-	let Ok(old_name) = rename_group(context.database, interaction.user.id, group, new_name).await
-	else {
-		let _ = interaction
-			.ephemeral_reply(
-				context.http,
-				format!("You have no group called \"{group}\"."),
-			)
-			.await;
-		return;
+	let old_name = match rename_group(context.database, interaction.user.id, group, new_name).await
+	{
+		Ok(old_name) => old_name,
+		Err(RenameGroupError::NoSuchGroup) => {
+			let _ = interaction
+				.ephemeral_reply(
+					context.http,
+					format!("You have no group called \"{group}\"."),
+				)
+				.await;
+			return;
+		}
+		Err(RenameGroupError::NameTaken(taken_name)) => {
+			let _ = interaction
+				.ephemeral_reply(
+					context.http,
+					format!("There is already a group named \"{taken_name}\"."),
+				)
+				.await;
+			return;
+		}
 	};
 
 	let message = format!("Renamed group {} to {}.", old_name, new_name);

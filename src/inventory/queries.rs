@@ -160,7 +160,6 @@ pub(super) async fn remove_from_group(
 					LEFT JOIN emoji_inventory_groups
 					ON emoji_inventory.group_id = emoji_inventory_groups.id
 					WHERE emoji_inventory.user = ? AND emoji_inventory.emoji = ? AND emoji_inventory_groups.name = ?
-					ORDER BY sort_order DESC
 					LIMIT ?
 				)
 				",
@@ -234,20 +233,24 @@ async fn get_current_group_name<'a, E: SqliteExecutor<'a>>(
 	.map(|record| record.name)
 }
 
+pub(super) enum RenameGroupError {
+	NoSuchGroup,
+	NameTaken(String),
+}
+
 pub(super) async fn rename_group(
 	executor: &Pool<Sqlite>,
 	user: UserId,
 	group: &str,
 	new_name: &str,
-) -> Result<String, ()> {
+) -> Result<String, RenameGroupError> {
 	let mut transaction = executor.begin().await.unwrap();
 	let Some(old_name) = get_current_group_name(&mut *transaction, user, group).await else {
-		transaction.commit().await.unwrap();
-		return Err(());
+		return Err(RenameGroupError::NoSuchGroup);
 	};
 
 	let user_id = user.0 as i64;
-	query!(
+	if let Err(error) = query!(
 		"
 		UPDATE emoji_inventory_groups
 		SET name = ?
@@ -259,7 +262,20 @@ pub(super) async fn rename_group(
 	)
 	.execute(&mut *transaction)
 	.await
-	.unwrap();
+	{
+		if matches!(
+			error
+				.as_database_error()
+				.map(|err| err.is_unique_violation()),
+			Some(true)
+		) {
+			let taken_name = get_current_group_name(&mut *transaction, user, new_name)
+				.await
+				.unwrap();
+			return Err(RenameGroupError::NameTaken(taken_name));
+		}
+		panic!();
+	};
 	transaction.commit().await.unwrap();
 
 	Ok(old_name)
@@ -303,6 +319,7 @@ pub(super) async fn list_groups(
 	(groups, ungrouped)
 }
 
+/// As empty groups shouldn't be able to exist, an empty result set can be treated as a missing group.
 pub(crate) async fn get_group_contents<'a, E: SqliteExecutor<'a>>(
 	executor: E,
 	emoji_map: &EmojiMap,
