@@ -23,7 +23,9 @@ pub async fn execute(context: Context<'_>, interaction: ApplicationCommandIntera
 		.unwrap()
 		.trim();
 	let Some(emoji) = context.emoji_map.get(input_emoji) else {
-		let _ = interaction.ephemeral_reply(context.http, "No such emoji in my list.").await;
+		let _ = interaction
+			.ephemeral_reply(context.http, "No such emoji in my list.")
+			.await;
 		return;
 	};
 
@@ -41,7 +43,9 @@ pub async fn execute(context: Context<'_>, interaction: ApplicationCommandIntera
 		let size = 128;
 
 		let Some(data) = read_emoji_svg(emoji) else {
-			let _ = interaction.ephemeral_reply(context.http, "No such emoji in my files.").await;
+			let _ = interaction
+				.ephemeral_reply(context.http, "No such emoji in my files.")
+				.await;
 			return;
 		};
 		let tree = resvg::usvg::Tree::from_data(&data, &resvg::usvg::Options::default()).unwrap();

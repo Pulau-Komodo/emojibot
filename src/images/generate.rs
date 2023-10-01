@@ -156,14 +156,19 @@ pub async fn execute_test(context: Context<'_>, interaction: ApplicationCommandI
 	};
 
 	let png = {
-		let Some(images) = emojis.into_iter().map(|emoji| {
-			let svg_data = read_emoji_svg(&emoji)?;
-			let pixmap = svg_to_pixmap(svg_data);
-			let image = pixmap_to_rgba_image(pixmap);
-			Some(add_rotation_margin(image))
-		}
-		).collect::<Option<Vec<_>>>() else {
-			let _ = interaction.ephemeral_reply(context.http, "Some file missing").await;
+		let Some(images) = emojis
+			.into_iter()
+			.map(|emoji| {
+				let svg_data = read_emoji_svg(&emoji)?;
+				let pixmap = svg_to_pixmap(svg_data);
+				let image = pixmap_to_rgba_image(pixmap);
+				Some(add_rotation_margin(image))
+			})
+			.collect::<Option<Vec<_>>>()
+		else {
+			let _ = interaction
+				.ephemeral_reply(context.http, "Some file missing")
+				.await;
 			return;
 		};
 		let mut canvas = RgbaImage::new(400, 200);
@@ -236,14 +241,20 @@ pub async fn execute(context: Context<'_>, interaction: ApplicationCommandIntera
 		return;
 	}
 
-	let Some(images) = emojis.flatten().into_iter().map(|emoji| {
-		let svg_data = read_emoji_svg(&emoji)?;
-		let pixmap = svg_to_pixmap(svg_data);
-		let image = pixmap_to_rgba_image(pixmap);
-		Some(add_rotation_margin(image))
-	}
-	).collect::<Option<Vec<_>>>() else {
-		let _ = interaction.ephemeral_reply(context.http, "Some file missing.").await;
+	let Some(images) = emojis
+		.flatten()
+		.into_iter()
+		.map(|emoji| {
+			let svg_data = read_emoji_svg(&emoji)?;
+			let pixmap = svg_to_pixmap(svg_data);
+			let image = pixmap_to_rgba_image(pixmap);
+			Some(add_rotation_margin(image))
+		})
+		.collect::<Option<Vec<_>>>()
+	else {
+		let _ = interaction
+			.ephemeral_reply(context.http, "Some file missing.")
+			.await;
 		return;
 	};
 

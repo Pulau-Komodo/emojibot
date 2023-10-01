@@ -303,13 +303,7 @@ async fn validate_trade_offer(
 	offering_user: UserId,
 	target_user: UserId,
 ) -> TradeOfferValidation {
-	let Some(trade) = get_trade_offer(
-		executor,
-		emoji_map,
-		offering_user,
-		target_user,
-	)
-	.await else {
+	let Some(trade) = get_trade_offer(executor, emoji_map, offering_user, target_user).await else {
 		return TradeOfferValidation::NoTrade;
 	};
 	if !trade
