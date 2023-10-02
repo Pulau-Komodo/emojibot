@@ -42,6 +42,22 @@ impl Emoji {
 		}
 		string + ".svg"
 	}
+	pub fn file_name_png(&self) -> String {
+		
+		let mut string = String::with_capacity(self.emoji.len() * 6 + 3);
+		let is_short = self.emoji.chars().nth(3).is_none();
+		for char in self.emoji.chars() {
+			if is_short && char == VS16 {
+				// For some reason, Twemoji file names never include VS16 on shorter emojis, even though some of them should have it.
+				continue;
+			}
+			if !string.is_empty() {
+				string.push('-');
+			}
+			write!(string, "{:x}", char as u32).unwrap();
+		}
+		string + ".png"
+	}
 }
 
 impl Display for Emoji {
