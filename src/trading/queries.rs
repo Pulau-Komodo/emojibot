@@ -160,6 +160,7 @@ pub(super) async fn get_incoming_trade_offers(
 	full_offers
 }
 
+// This one could easily be done in one query, but it would be more of a hassle with the other `get_trade_emojis` callers, and I think it's good to use that same function everywhere, even if it may be slightly less optimized.
 pub(super) async fn get_trade_offer(
 	executor: &Pool<Sqlite>,
 	emoji_map: &EmojiMap,
@@ -332,7 +333,7 @@ async fn transfer_emoji(
 ///
 /// To be run after a trade completes.
 ///
-/// This could all be a single query but I don't know how to write it.
+// This could probably all be a single query but I don't know how to write it.
 pub(super) async fn remove_invalidated_trade_offers(
 	executor: &Pool<Sqlite>,
 	trade_offer: &TradeOffer,
