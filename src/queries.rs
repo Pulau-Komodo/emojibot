@@ -13,7 +13,7 @@ pub async fn get_user_emojis_grouped(
 	emoji_map: &EmojiMap,
 	user: UserId,
 ) -> (Vec<EmojisWithCounts>, Option<EmojisWithCounts>) {
-	let user_id = user.0 as i64;
+	let user_id = user.get() as i64;
 	let records = query!(
 		"
 		SELECT emoji, COUNT(*) AS count, sort_order
@@ -56,7 +56,7 @@ pub async fn get_user_emojis_grouped(
 }
 
 pub async fn give_emoji<'c, E: SqliteExecutor<'c>>(database: E, user: UserId, emoji: Emoji) {
-	let user_id = *user.as_u64() as i64;
+	let user_id = user.get() as i64;
 	let emoji = emoji.as_str();
 	query!(
 		"

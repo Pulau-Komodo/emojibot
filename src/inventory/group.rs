@@ -1,11 +1,8 @@
 use std::fmt::Write;
 
 use serenity::{
-	builder::CreateApplicationCommand,
-	model::prelude::{
-		application_command::{ApplicationCommandInteraction, CommandDataOption},
-		command::CommandOptionType,
-	},
+	all::{CommandDataOption, CommandDataOptionValue, CommandInteraction, CommandOptionType},
+	builder::{CreateCommand, CreateCommandOption},
 };
 
 use crate::{
@@ -19,28 +16,33 @@ use super::queries::{
 	reposition_group, RenameGroupError, RepositionOutcome,
 };
 
-pub async fn execute(context: Context<'_>, mut interaction: ApplicationCommandInteraction) {
+pub async fn execute(context: Context<'_>, mut interaction: CommandInteraction) {
 	let subcommand = interaction.data.options.pop().unwrap();
+	let options = match subcommand.value {
+		CommandDataOptionValue::SubCommand(options) => options,
+		CommandDataOptionValue::SubCommandGroup(options) => options,
+		_ => panic!("Received wrong argument"),
+	};
 	match subcommand.name.as_str() {
 		"add" => {
-			add(context, interaction, subcommand.options).await;
+			add(context, interaction, options).await;
 		}
 		"remove" => {
-			remove(context, interaction, subcommand.options).await;
+			remove(context, interaction, options).await;
 		}
 		"rename" => {
-			rename(context, interaction, subcommand.options).await;
+			rename(context, interaction, options).await;
 		}
 		"list" => {
 			list(context, interaction).await;
 		}
 		"view" => {
-			view(context, interaction, subcommand.options).await;
+			view(context, interaction, options).await;
 		}
 		"reposition" => {
 			// let _ = ephemeral_reply(context, interaction, "Not yet implemented.").await;
 			// return;
-			reposition(context, interaction, subcommand.options).await;
+			reposition(context, interaction, options).await;
 		}
 		_ => panic!("Received invalid subcommand name."),
 	}
@@ -48,16 +50,15 @@ pub async fn execute(context: Context<'_>, mut interaction: ApplicationCommandIn
 
 async fn add(
 	context: Context<'_>,
-	interaction: ApplicationCommandInteraction,
+	interaction: CommandInteraction,
 	options: Vec<CommandDataOption>,
 ) {
 	let group_name = options
 		.get(0)
-		.and_then(|option| option.value.as_ref())
-		.and_then(|value| value.as_str())
+		.and_then(|option| option.value.as_str())
 		.unwrap();
 
-	let emojis = match get_and_parse_emoji_option(context.emoji_map, &options, 1) {
+	let emojis = match get_and_parse_emoji_option(context.emoji_map, options.get(1)) {
 		Ok(emojis) => emojis,
 		Err(error) => {
 			let _ = interaction.ephemeral_reply(context.http, error).await;
@@ -96,27 +97,30 @@ async fn add(
 
 async fn remove(
 	context: Context<'_>,
-	interaction: ApplicationCommandInteraction,
+	interaction: CommandInteraction,
 	options: Vec<CommandDataOption>,
 ) {
 	let subcommand = options.get(0).unwrap();
-	let group = (subcommand.name.as_str() == "from").then(|| {
-		subcommand
-			.options
+	let CommandDataOptionValue::SubCommand(ref options) = subcommand.value else {
+		panic!();
+	};
+	let (group, emojis) = if subcommand.name.as_str() == "from" {
+		let group_name = options
 			.get(0)
-			.and_then(|option| option.value.as_ref())
-			.and_then(|value| value.as_str())
-			.unwrap()
-	});
-	let emojis_index = if group.is_some() { 1 } else { 0 };
-	let emojis =
-		match get_and_parse_emoji_option(context.emoji_map, &subcommand.options, emojis_index) {
-			Ok(emojis) => emojis,
-			Err(error) => {
-				let _ = interaction.ephemeral_reply(context.http, error).await;
-				return;
-			}
-		};
+			.and_then(|option| option.value.as_str())
+			.unwrap();
+		(Some(group_name), options.get(1))
+	} else {
+		(None, options.get(0))
+	};
+
+	let emojis = match get_and_parse_emoji_option(context.emoji_map, emojis) {
+		Ok(emojis) => emojis,
+		Err(error) => {
+			let _ = interaction.ephemeral_reply(context.http, error).await;
+			return;
+		}
+	};
 
 	let emoji_count = emojis.len() as u32;
 	let emojis = EmojisWithCounts::from_flat(&emojis);
@@ -160,18 +164,16 @@ async fn remove(
 
 async fn rename(
 	context: Context<'_>,
-	interaction: ApplicationCommandInteraction,
+	interaction: CommandInteraction,
 	options: Vec<CommandDataOption>,
 ) {
 	let group = options
 		.get(0)
-		.and_then(|option| option.value.as_ref())
-		.and_then(|value| value.as_str())
+		.and_then(|option| option.value.as_str())
 		.unwrap();
 	let new_name = options
 		.get(1)
-		.and_then(|option| option.value.as_ref())
-		.and_then(|value| value.as_str())
+		.and_then(|option| option.value.as_str())
 		.unwrap();
 
 	let old_name = match rename_group(context.database, interaction.user.id, group, new_name).await
@@ -201,7 +203,7 @@ async fn rename(
 	let _ = interaction.ephemeral_reply(context.http, message).await;
 }
 
-async fn list(context: Context<'_>, interaction: ApplicationCommandInteraction) {
+async fn list(context: Context<'_>, interaction: CommandInteraction) {
 	let (groups, ungrouped) = list_groups(context.database, interaction.user.id).await;
 
 	let s = if ungrouped == 1 { "" } else { "s" };
@@ -240,13 +242,12 @@ async fn list(context: Context<'_>, interaction: ApplicationCommandInteraction) 
 
 async fn view(
 	context: Context<'_>,
-	interaction: ApplicationCommandInteraction,
+	interaction: CommandInteraction,
 	options: Vec<CommandDataOption>,
 ) {
 	let group = options
 		.get(0)
-		.and_then(|option| option.value.as_ref())
-		.and_then(|value| value.as_str())
+		.and_then(|option| option.value.as_str())
 		.unwrap();
 
 	let Some((name, emojis)) = group_name_and_contents(
@@ -272,18 +273,16 @@ async fn view(
 
 async fn reposition(
 	context: Context<'_>,
-	interaction: ApplicationCommandInteraction,
+	interaction: CommandInteraction,
 	options: Vec<CommandDataOption>,
 ) {
 	let group = options
 		.get(0)
-		.and_then(|option| option.value.as_ref())
-		.and_then(|value| value.as_str())
+		.and_then(|option| option.value.as_str())
 		.unwrap();
 	let Some::<u32>(new_position) = options
 		.get(1)
-		.and_then(|option| option.value.as_ref())
-		.and_then(|value| value.as_u64())
+		.and_then(|option| option.value.as_i64())
 		.and_then(|num| num.try_into().ok())
 	else {
 		eprintln!("Somehow received a number that can't be represented as u32.");
@@ -345,133 +344,32 @@ async fn reposition(
 	let _ = interaction.ephemeral_reply(context.http, message).await;
 }
 
-pub fn register(command: &mut CreateApplicationCommand) -> &mut CreateApplicationCommand {
-	command
-		.name("group")
-		.description("Interact with emoji groups.")
-		.create_option(|option| {
-			option
-				.name("add")
-				.description("Add emojis to a group. Makes the group if it doesn't already exist.")
-				.kind(CommandOptionType::SubCommand)
-				.create_sub_option(|option| {
-					option
-						.name("group")
-						.description("The group to add the emojis to.")
-						.kind(CommandOptionType::String)
-						.max_length(50)
-						.required(true)
-				})
-				.create_sub_option(|option| {
-					option
-						.name("emojis")
-						.description("The emojis to add to the group.")
-						.kind(CommandOptionType::String)
-						.required(true)
-				})
-		})
-		.create_option(|option| {
-			option
-				.name("remove")
-				.description("Removes emojis from a group.")
-				.kind(CommandOptionType::SubCommandGroup)
-				.create_sub_option(|option| {
-					option
-						.name("from")
-						.description("Removes emojis from a specific group.")
-						.kind(CommandOptionType::SubCommand)
-						.create_sub_option(|option| {
-							option
-								.name("group")
-								.description("The group to remove the emojis from.")
-								.kind(CommandOptionType::String)
-								.max_length(50)
-								.required(true)
-						})
-						.create_sub_option(|option| {
-							option
-								.name("emojis")
-								.description("The emojis to remove from the group.")
-								.kind(CommandOptionType::String)
-								.required(true)
-						})
-				})
-				.create_sub_option(|option| {
-					option
-						.name("emojis")
-						.description("Removes emojis from whatever group.")
-						.kind(CommandOptionType::SubCommand)
-						.create_sub_option(|option| {
-							option
-								.name("emojis")
-								.description("The emojis to remove from whatever group they're in.")
-								.kind(CommandOptionType::String)
-								.required(true)
-						})
-				})
-		})
-		.create_option(|option| {
-			option
-				.name("rename")
-				.description("Renames an emoji group.")
-				.kind(CommandOptionType::SubCommand)
-				.create_sub_option(|option| {
-					option
-						.name("group")
-						.description("The group to rename.")
-						.kind(CommandOptionType::String)
-						.max_length(50)
-						.required(true)
-				})
-				.create_sub_option(|option| {
-					option
-						.name("new_name")
-						.description("The new name for the group.")
-						.kind(CommandOptionType::String)
-						.max_length(50)
-						.required(true)
-				})
-		})
-		.create_option(|option| {
-			option
-				.name("list")
-				.description("Lists all your emoji groups.")
-				.kind(CommandOptionType::SubCommand)
-		})
-		.create_option(|option| {
-			option
-				.name("view")
-				.description("Views the contents of one of your emoji groups.")
-				.kind(CommandOptionType::SubCommand)
-				.create_sub_option(|option| {
-					option
-						.name("group")
-						.description("The group to view the contents of.")
-						.kind(CommandOptionType::String)
-						.max_length(50)
-						.required(true)
-				})
-		})
-		.create_option(|option| {
-			option
-				.name("reposition")
-				.description("Repositions the group in the group list. This is mostly relevant when viewing inventory.")
-				.kind(CommandOptionType::SubCommand)
-				.create_sub_option(|option| {
-					option
-						.name("group")
-						.description("The group to reposition.")
-						.kind(CommandOptionType::String)
-						.max_length(50)
-						.required(true)
-				})
-				.create_sub_option(|option| {
-					option
-						.name("position")
-						.description("The position to move the group to, where 0 is the first.")
-						.kind(CommandOptionType::Integer)
-						.min_int_value(0)
-						.required(true)
-				})
-		})
+#[rustfmt::skip]
+pub fn register() -> CreateCommand {
+	CreateCommand::new("group").description("Interact with emoji groups.")
+		.add_option(CreateCommandOption::new(CommandOptionType::SubCommand, "add", "Add emojis to a group. Makes the group if it doesn't already exist.")
+			.add_sub_option(CreateCommandOption::new(CommandOptionType::String, "group", "The group to add the emojis to.").max_length(50).required(true))
+			.add_sub_option(CreateCommandOption::new(CommandOptionType::String, "emojis", "The emojis to add to the group.").required(true))
+		)
+		.add_option(CreateCommandOption::new(CommandOptionType::SubCommandGroup, "remove", "Removes emojis from a group.")
+			.add_sub_option(CreateCommandOption::new(CommandOptionType::SubCommand, "from", "Removes emojis from a specific group.")
+				.add_sub_option(CreateCommandOption::new(CommandOptionType::String, "group", "The group to remove the emojis from.").max_length(50).required(true))
+				.add_sub_option(CreateCommandOption::new(CommandOptionType::String, "emojis", "The emojis to remove from the group.").required(true))
+			)
+			.add_sub_option(CreateCommandOption::new(CommandOptionType::SubCommand, "emojis", "Removes emojis from whatever group.")
+				.add_sub_option(CreateCommandOption::new(CommandOptionType::String, "emojis", "The emojis to remove from whatever group they're in.").required(true))
+			)
+		)
+		.add_option(CreateCommandOption::new(CommandOptionType::SubCommand, "rename", "Renames an emoji group.")
+			.add_sub_option(CreateCommandOption::new(CommandOptionType::String, "group", "The group to rename.").max_length(50).required(true))
+			.add_sub_option(CreateCommandOption::new(CommandOptionType::String, "new_name", "The new name for the group.").max_length(50).required(true))
+		)
+		.add_option(CreateCommandOption::new(CommandOptionType::SubCommand, "list", "Lists all your emoji groups."))
+		.add_option(CreateCommandOption::new(CommandOptionType::SubCommand, "view", "Views the contents of one of your emoji groups.")
+			.add_sub_option(CreateCommandOption::new(CommandOptionType::String, "group", "The group to view the contents of.").max_length(50).required(true))
+		)
+		.add_option(CreateCommandOption::new(CommandOptionType::SubCommand, "reposition", "Repositions the group in the group list. This is mostly relevant when viewing inventory.")
+			.add_sub_option(CreateCommandOption::new(CommandOptionType::String, "group", "The group to reposition.").max_length(50).required(true))
+			.add_sub_option(CreateCommandOption::new(CommandOptionType::Integer, "position", "The position to move the group to, where 0 is the first.").min_int_value(0).required(true))
+		)
 }

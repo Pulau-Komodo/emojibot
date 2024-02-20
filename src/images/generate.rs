@@ -6,14 +6,9 @@ use rand::Rng;
 use rand_distr::Distribution;
 use resvg::usvg::TreeParsing;
 use serenity::{
-	builder::CreateApplicationCommand,
-	model::{
-		prelude::{
-			application_command::ApplicationCommandInteraction, command::CommandOptionType,
-			InteractionResponseType, UserId,
-		},
-		Permissions,
-	},
+	all::{CommandInteraction, CommandOptionType, UserId},
+	builder::{CreateCommand, CreateCommandOption},
+	model::Permissions,
 };
 use sqlx::{Pool, Sqlite};
 
@@ -105,38 +100,32 @@ async fn parse_emoji_and_group_input<'s>(
 	Ok(EmojisWithCounts::from_flat(&emojis))
 }
 
-pub async fn execute_test(context: Context<'_>, interaction: ApplicationCommandInteraction) {
-	interaction
-		.create_interaction_response(&context.http, |response| {
-			response
-				.kind(InteractionResponseType::ChannelMessageWithSource)
-				.interaction_response_data(|message| message.content("No test currently active."))
-		})
-		.await
-		.unwrap();
+pub async fn execute_test(context: Context<'_>, interaction: CommandInteraction) {
+	let _ = interaction
+		.public_reply(context.http, "No test currently active.")
+		.await;
 }
 
-pub fn register_test(command: &mut CreateApplicationCommand) -> &mut CreateApplicationCommand {
-	command
-		.name("testimage")
+pub fn register_test() -> CreateCommand {
+	CreateCommand::new("testimage")
 		.description("IDK")
 		.default_member_permissions(Permissions::ADMINISTRATOR)
-		.create_option(|option| {
-			option
-				.name("emoji")
-				.description("The emoji to wibbly wobble.")
-				.kind(CommandOptionType::String)
-				.required(true)
-		})
+		.add_option(
+			CreateCommandOption::new(
+				CommandOptionType::String,
+				"emoji",
+				"The emoji to wibbly wobble.",
+			)
+			.required(true),
+		)
 }
 
-pub async fn execute(context: Context<'_>, interaction: ApplicationCommandInteraction) {
+pub async fn execute(context: Context<'_>, interaction: CommandInteraction) {
 	let input = interaction
 		.data
 		.options
 		.first()
-		.and_then(|option| option.value.as_ref())
-		.and_then(|value| value.as_str())
+		.and_then(|option| option.value.as_str())
 		.unwrap();
 	let emojis = match parse_emoji_and_group_input(
 		context.database,
@@ -193,25 +182,19 @@ pub async fn execute(context: Context<'_>, interaction: ApplicationCommandIntera
 	let image = canvas.encode_png().unwrap();
 
 	let _ = interaction
-		.create_interaction_response(&context.http, |response| {
-			response
-				.kind(InteractionResponseType::ChannelMessageWithSource)
-				.interaction_response_data(|message| {
-					message.add_file((image.as_slice(), "image.png"))
-				})
-		})
+		.reply_image(context.http, image.as_slice(), "image.png")
 		.await;
 }
 
-pub fn register(command: &mut CreateApplicationCommand) -> &mut CreateApplicationCommand {
-	command
-		.name("generate")
+pub fn register() -> CreateCommand {
+	CreateCommand::new("generate")
 		.description("Generage an image using your emojis.")
-		.create_option(|option| {
-			option
-				.name("emojis")
-				.description("The emojis to use. You can use emojis and emoji groups together, comma-separated.")
-				.kind(CommandOptionType::String)
-				.required(true)
-		})
+		.add_option(
+			CreateCommandOption::new(
+				CommandOptionType::String,
+				"emojis",
+				"The emojis to use. You can use emojis and emoji groups together, comma-separated.",
+			)
+			.required(true),
+		)
 }

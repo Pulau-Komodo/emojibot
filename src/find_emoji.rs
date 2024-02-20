@@ -1,10 +1,8 @@
 use std::fmt::Write;
 
 use serenity::{
-	builder::CreateApplicationCommand,
-	model::prelude::{
-		application_command::ApplicationCommandInteraction, command::CommandOptionType, UserId,
-	},
+	all::{CommandDataOptionValue, CommandInteraction, CommandOptionType, UserId},
+	builder::{CreateCommand, CreateCommandOption},
 };
 use sqlx::{query, Pool, Sqlite};
 
@@ -29,16 +27,18 @@ async fn find_emoji_users(executor: &Pool<Sqlite>, emoji: Emoji) -> Vec<(UserId,
 
 	result
 		.into_iter()
-		.map(|record| (UserId(record.user as u64), record.count))
+		.map(|record| (UserId::new(record.user as u64), record.count))
 		.collect()
 }
 
-pub async fn execute(context: Context<'_>, interaction: ApplicationCommandInteraction) {
-	let options = &interaction.data.options.first().unwrap().options;
+pub async fn execute(context: Context<'_>, interaction: CommandInteraction) {
+	let options = &interaction.data.options.first().unwrap().value;
+	let CommandDataOptionValue::SubCommand(options) = options else {
+		panic!()
+	};
 	let input = options
 		.first()
-		.and_then(|option| option.value.as_ref())
-		.and_then(|value| value.as_str())
+		.and_then(|option| option.value.as_str())
 		.unwrap_or("");
 
 	let Some(&emoji) = context.emoji_map.get(input) else {
@@ -94,29 +94,31 @@ pub async fn execute(context: Context<'_>, interaction: ApplicationCommandIntera
 	let _ = interaction.reply(context.http, output, !is_public).await;
 }
 
-pub fn register(command: &mut CreateApplicationCommand) -> &mut CreateApplicationCommand {
-	command
-		.name("who")
+pub fn register() -> CreateCommand {
+	CreateCommand::new("who")
 		.description("Required field that shows up nowhere")
-		.create_option(|option| {
-			option
-				.name("has")
-				.description("Find all users with public inventories who own a specific emoji.")
-				.kind(CommandOptionType::SubCommand)
-				.create_sub_option(|option| {
-					option
-						.name("emoji")
-						.description("The emoji to look for.")
-						.kind(CommandOptionType::String)
-						.required(true)
-				})
-				.create_sub_option(|option| {
-					option
-						.name("show")
-						.description("Whether to post the results publicly.")
-						.add_string_choice("show", "show")
-						.kind(CommandOptionType::String)
-						.required(false)
-				})
-		})
+		.add_option(
+			CreateCommandOption::new(
+				CommandOptionType::SubCommand,
+				"has",
+				"Find all users with public inventories who own a specific emoji.",
+			)
+			.add_sub_option(
+				CreateCommandOption::new(
+					CommandOptionType::String,
+					"emoji",
+					"The emoji to look for.",
+				)
+				.required(true),
+			)
+			.add_sub_option(
+				CreateCommandOption::new(
+					CommandOptionType::String,
+					"show",
+					"Whether to post the results publicly.",
+				)
+				.add_string_choice("show", "show")
+				.required(false),
+			),
+		)
 }

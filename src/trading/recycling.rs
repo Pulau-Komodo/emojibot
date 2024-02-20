@@ -1,8 +1,6 @@
 use serenity::{
-	builder::CreateApplicationCommand,
-	model::prelude::{
-		application_command::ApplicationCommandInteraction, command::CommandOptionType, UserId,
-	},
+	all::{CommandInteraction, CommandOptionType, UserId},
+	builder::{CreateCommand, CreateCommandOption},
 };
 use sqlx::{query, Pool, Sqlite};
 
@@ -20,7 +18,7 @@ use crate::{
 use super::queries::remove_invalidated_trade_offers;
 
 async fn recycle(database: &Pool<Sqlite>, user: UserId, emojis: EmojisWithCounts) -> Emoji {
-	let user_id = user.0 as i64;
+	let user_id = user.get() as i64;
 	let trade_offer = TradeOffer::new_recycling(user, emojis);
 	let random_emoji = trade_offer.recycling_emoji();
 
@@ -71,13 +69,12 @@ async fn recycle(database: &Pool<Sqlite>, user: UserId, emojis: EmojisWithCounts
 	random_emoji
 }
 
-pub async fn execute(context: Context<'_>, interaction: ApplicationCommandInteraction) {
+pub async fn execute(context: Context<'_>, interaction: CommandInteraction) {
 	let input = interaction
 		.data
 		.options
 		.first()
-		.and_then(|option| option.value.as_ref())
-		.and_then(|value| value.as_str())
+		.and_then(|option| option.value.as_str())
 		.unwrap();
 	let emojis = match parse_emoji_input(context.emoji_map, input) {
 		Ok(emojis) => emojis,
@@ -117,15 +114,15 @@ pub async fn execute(context: Context<'_>, interaction: ApplicationCommandIntera
 	}
 }
 
-pub fn register(command: &mut CreateApplicationCommand) -> &mut CreateApplicationCommand {
-	command
-		.name("recycle")
+pub fn register() -> CreateCommand {
+	CreateCommand::new("recycle")
 		.description("Recycle 3 emojis for a new one.")
-		.create_option(|option| {
-			option
-				.name("emojis")
-				.description("The 3 emojis to recycle.")
-				.kind(CommandOptionType::String)
-				.required(true)
-		})
+		.add_option(
+			CreateCommandOption::new(
+				CommandOptionType::String,
+				"emojis",
+				"The 3 emojis to recycle.",
+			)
+			.required(true),
+		)
 }

@@ -9,8 +9,8 @@ use crate::{
 use super::trade_offer::TradeOffer;
 
 pub(super) async fn add_trade_offer(executor: &Pool<Sqlite>, trade_offer: TradeOffer) {
-	let user_id = trade_offer.offering_user().0 as i64;
-	let target_user_id = trade_offer.target_user().0 as i64;
+	let user_id = trade_offer.offering_user().get() as i64;
+	let target_user_id = trade_offer.target_user().get() as i64;
 	let emojis = trade_offer.to_database_format();
 
 	let mut transaction = executor.begin().await.unwrap();
@@ -52,8 +52,8 @@ pub(super) async fn remove_trade_offer<'c, E>(executor: E, user: UserId, target_
 where
 	E: Executor<'c, Database = Sqlite>,
 {
-	let user_id = user.0 as i64;
-	let target_user_id = target_user.0 as i64;
+	let user_id = user.get() as i64;
+	let target_user_id = target_user.get() as i64;
 	query!(
 		"
 		DELETE FROM
@@ -103,7 +103,7 @@ pub(super) async fn get_outgoing_trade_offers(
 	emoji_map: &EmojiMap,
 	user: UserId,
 ) -> Vec<TradeOffer> {
-	let user_id = user.0 as i64;
+	let user_id = user.get() as i64;
 	let mut transaction = executor.begin().await.unwrap();
 	let offers = query!(
 		"
@@ -122,7 +122,7 @@ pub(super) async fn get_outgoing_trade_offers(
 	let mut full_offers = Vec::new();
 	for record in offers {
 		let emojis = get_trade_emojis(&mut transaction, emoji_map, record.id).await;
-		let offer = TradeOffer::from_database(user, UserId(record.target_user as u64), emojis);
+		let offer = TradeOffer::from_database(user, UserId::new(record.target_user as u64), emojis);
 		full_offers.push(offer);
 	}
 	transaction.commit().await.unwrap();
@@ -134,7 +134,7 @@ pub(super) async fn get_incoming_trade_offers(
 	emoji_map: &EmojiMap,
 	user: UserId,
 ) -> Vec<TradeOffer> {
-	let user_id = user.0 as i64;
+	let user_id = user.get() as i64;
 	let mut transaction = executor.begin().await.unwrap();
 	let offers = query!(
 		"
@@ -153,7 +153,7 @@ pub(super) async fn get_incoming_trade_offers(
 	let mut full_offers = Vec::new();
 	for record in offers {
 		let emojis = get_trade_emojis(&mut transaction, emoji_map, record.id).await;
-		let offer = TradeOffer::from_database(UserId(record.user as u64), user, emojis);
+		let offer = TradeOffer::from_database(UserId::new(record.user as u64), user, emojis);
 		full_offers.push(offer);
 	}
 	transaction.commit().await.unwrap();
@@ -167,8 +167,8 @@ pub(super) async fn get_trade_offer(
 	offering_user: UserId,
 	target_user: UserId,
 ) -> Option<TradeOffer> {
-	let offering_user_id = offering_user.0 as i64;
-	let target_user_id = target_user.0 as i64;
+	let offering_user_id = offering_user.get() as i64;
+	let target_user_id = target_user.get() as i64;
 	let mut transaction = executor.begin().await.unwrap();
 	let offer = query!(
 		"
@@ -199,8 +199,8 @@ pub(super) async fn does_trade_offer_exist(
 	user: UserId,
 	target_user: UserId,
 ) -> bool {
-	let user_id = user.0 as i64;
-	let target_user_id = target_user.0 as i64;
+	let user_id = user.get() as i64;
+	let target_user_id = target_user.get() as i64;
 	query!(
 		"
 		SELECT
@@ -259,8 +259,8 @@ pub(super) async fn complete_trade(executor: &Pool<Sqlite>, trade_offer: &TradeO
 }
 
 pub(super) async fn log_trade(executor: &mut Transaction<'_, Sqlite>, trade_offer: &TradeOffer) {
-	let offering_user_id = trade_offer.offering_user().0 as i64;
-	let target_user = trade_offer.target_user().0 as i64;
+	let offering_user_id = trade_offer.offering_user().get() as i64;
+	let target_user = trade_offer.target_user().get() as i64;
 	let id = query!(
 		"
 		INSERT INTO
@@ -302,8 +302,8 @@ async fn transfer_emoji(
 	to: UserId,
 ) {
 	let emoji = emoji.as_str();
-	let from_id = from.0 as i64;
-	let to_id = to.0 as i64;
+	let from_id = from.get() as i64;
+	let to_id = to.get() as i64;
 	query!(
 		"
 		UPDATE emoji_inventory
@@ -338,8 +338,8 @@ pub(super) async fn remove_invalidated_trade_offers(
 	executor: &Pool<Sqlite>,
 	trade_offer: &TradeOffer,
 ) {
-	let user_one = trade_offer.offering_user().0 as i64;
-	let user_two = trade_offer.target_user().0 as i64;
+	let user_one = trade_offer.offering_user().get() as i64;
+	let user_two = trade_offer.target_user().get() as i64;
 
 	let mut transaction = executor.begin().await.unwrap();
 

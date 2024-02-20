@@ -1,12 +1,10 @@
-use std::{borrow::Cow, fmt::Display, sync::Arc};
+use std::{borrow::Cow, sync::Arc};
 
 use serenity::{
+	all::{CommandDataOption, CommandInteraction},
 	async_trait,
+	builder::{CreateAttachment, CreateInteractionResponse, CreateInteractionResponseMessage},
 	http::Http,
-	model::prelude::{
-		application_command::{ApplicationCommandInteraction, CommandDataOption},
-		InteractionResponseType,
-	},
 	Result as SerenityResult,
 };
 use unicode_segmentation::UnicodeSegmentation;
@@ -18,41 +16,65 @@ use crate::{
 
 #[async_trait]
 pub trait ReplyShortcuts {
-	async fn reply<S>(self, http: &Arc<Http>, content: S, ephemeral: bool) -> SerenityResult<()>
+	async fn reply<S>(&self, http: &Arc<Http>, content: S, ephemeral: bool) -> SerenityResult<()>
 	where
-		S: Display + std::marker::Send;
-	async fn ephemeral_reply<S>(self, http: &Arc<Http>, content: S) -> SerenityResult<()>
+		S: Into<String> + Send;
+	async fn ephemeral_reply<S>(&self, http: &Arc<Http>, content: S) -> SerenityResult<()>
 	where
-		S: Display + std::marker::Send;
-	async fn public_reply<S>(self, http: &Arc<Http>, content: S) -> SerenityResult<()>
+		S: Into<String> + std::marker::Send;
+	async fn public_reply<S>(&self, http: &Arc<Http>, content: S) -> SerenityResult<()>
 	where
-		S: Display + std::marker::Send;
+		S: Into<String> + std::marker::Send;
+	async fn reply_image(
+		&self,
+		http: &Arc<Http>,
+		image: &[u8],
+		file_name: &str,
+	) -> SerenityResult<()>;
 }
 
 #[async_trait]
-impl ReplyShortcuts for ApplicationCommandInteraction {
-	async fn reply<S>(self, http: &Arc<Http>, content: S, ephemeral: bool) -> SerenityResult<()>
+impl ReplyShortcuts for CommandInteraction {
+	async fn reply<S>(&self, http: &Arc<Http>, content: S, ephemeral: bool) -> SerenityResult<()>
 	where
-		S: Display + Send,
+		S: Into<String> + Send,
 	{
-		self.create_interaction_response(http, |response| {
-			response
-				.kind(InteractionResponseType::ChannelMessageWithSource)
-				.interaction_response_data(|message| message.content(content).ephemeral(ephemeral))
-		})
+		self.create_response(
+			http,
+			CreateInteractionResponse::Message(
+				CreateInteractionResponseMessage::new()
+					.content(content)
+					.ephemeral(ephemeral),
+			),
+		)
 		.await
 	}
-	async fn ephemeral_reply<S>(self, http: &Arc<Http>, content: S) -> SerenityResult<()>
+	async fn ephemeral_reply<S>(&self, http: &Arc<Http>, content: S) -> SerenityResult<()>
 	where
-		S: Display + Send,
+		S: Into<String> + Send,
 	{
 		self.reply(http, content, true).await
 	}
-	async fn public_reply<S>(self, http: &Arc<Http>, content: S) -> SerenityResult<()>
+	async fn public_reply<S>(&self, http: &Arc<Http>, content: S) -> SerenityResult<()>
 	where
-		S: Display + Send,
+		S: Into<String> + Send,
 	{
 		self.reply(http, content, false).await
+	}
+	async fn reply_image(
+		&self,
+		http: &Arc<Http>,
+		image: &[u8],
+		file_name: &str,
+	) -> SerenityResult<()> {
+		self.create_response(
+			http,
+			CreateInteractionResponse::Message(
+				CreateInteractionResponseMessage::new()
+					.add_file(CreateAttachment::bytes(image, file_name)),
+			),
+		)
+		.await
 	}
 }
 
@@ -78,13 +100,10 @@ pub fn parse_emoji_input(emoji_map: &EmojiMap, input: &str) -> Result<Vec<Emoji>
 /// Gets the emojis from a specified option index and ensures there is at least one emoji, otherwise returns a user-friendly error string.
 pub fn get_and_parse_emoji_option(
 	emoji_map: &EmojiMap,
-	options: &[CommandDataOption],
-	index: usize,
+	option: Option<&CommandDataOption>,
 ) -> Result<Vec<Emoji>, Cow<'static, str>> {
-	let input = options
-		.get(index)
-		.and_then(|option| option.value.as_ref())
-		.and_then(|value| value.as_str())
+	let input = option
+		.and_then(|option| option.value.as_str())
 		.ok_or("Emojis argument not supplied.")?;
 
 	let emojis = parse_emoji_input(emoji_map, input)?;

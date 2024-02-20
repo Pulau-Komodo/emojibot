@@ -1,10 +1,8 @@
 use std::{borrow::Cow, fmt::Write};
 
 use serenity::{
-	builder::CreateApplicationCommand,
-	model::prelude::{
-		application_command::ApplicationCommandInteraction, command::CommandOptionType, UserId,
-	},
+	all::{CommandDataOptionValue, CommandInteraction, CommandOptionType},
+	builder::{CreateCommand, CreateCommandOption},
 };
 
 use crate::{
@@ -12,25 +10,25 @@ use crate::{
 	util::ReplyShortcuts,
 };
 
-pub async fn execute(context: Context<'_>, mut interaction: ApplicationCommandInteraction) {
+pub async fn execute(context: Context<'_>, mut interaction: CommandInteraction) {
 	let subcommand = interaction.data.options.pop().unwrap();
 	let targets_own = subcommand.name == "own";
+	let CommandDataOptionValue::SubCommand(options) = subcommand.value else {
+		panic!("Received wrong option");
+	};
 	let target = if targets_own {
 		interaction.user.id
 	} else {
-		let option = subcommand.options.get(0).unwrap();
-		let id = option
-			.value
-			.as_ref()
-			.and_then(|value| value.as_str())
-			.unwrap();
-		UserId(id.parse().unwrap())
+		options
+			.first()
+			.and_then(|option| option.value.as_user_id())
+			.unwrap()
 	};
 
 	let is_public = if targets_own {
-		subcommand.options.get(0)
+		options.get(0)
 	} else {
-		subcommand.options.get(1)
+		options.get(1)
 	}
 	.is_some();
 
@@ -92,43 +90,47 @@ pub async fn execute(context: Context<'_>, mut interaction: ApplicationCommandIn
 		.unwrap();
 }
 
-pub fn register(command: &mut CreateApplicationCommand) -> &mut CreateApplicationCommand {
-	command
-		.name("inventory")
+pub fn register() -> CreateCommand {
+	CreateCommand::new("inventory")
 		.description("Check someone else's emoji inventory or your own.")
-		.create_option(|option| {
-			option
-				.name("own")
-				.description("Check your own inventory.")
-				.kind(CommandOptionType::SubCommand)
-				.create_sub_option(|option| {
-					option
-						.name("show")
-						.description("Whether to post your emojis publicly.")
-						.add_string_choice("show", "show")
-						.kind(CommandOptionType::String)
-						.required(false)
-				})
-		})
-		.create_option(|option| {
-			option
-				.name("other")
-				.description("Check someone else's inventory.")
-				.kind(CommandOptionType::SubCommand)
-				.create_sub_option(|option| {
-					option
-						.name("user")
-						.description("Whose inventory to look at.")
-						.kind(CommandOptionType::User)
-						.required(true)
-				})
-				.create_sub_option(|option| {
-					option
-						.name("show")
-						.description("Whether to post the emojis publicly.")
-						.add_string_choice("show", "show")
-						.kind(CommandOptionType::String)
-						.required(false)
-				})
-		})
+		.add_option(
+			CreateCommandOption::new(
+				CommandOptionType::SubCommand,
+				"own",
+				"Check your own inventory.",
+			)
+			.add_sub_option(
+				CreateCommandOption::new(
+					CommandOptionType::String,
+					"show",
+					"Whether to post your emojis publicly.",
+				)
+				.add_string_choice("show", "show")
+				.required(false),
+			),
+		)
+		.add_option(
+			CreateCommandOption::new(
+				CommandOptionType::SubCommand,
+				"other",
+				"Check someone else's inventory.",
+			)
+			.add_sub_option(
+				CreateCommandOption::new(
+					CommandOptionType::User,
+					"user",
+					"Whose inventory to look at.",
+				)
+				.required(true),
+			)
+			.add_sub_option(
+				CreateCommandOption::new(
+					CommandOptionType::String,
+					"show",
+					"Whether to post the emojis publicly.",
+				)
+				.add_string_choice("show", "show")
+				.required(false),
+			),
+		)
 }

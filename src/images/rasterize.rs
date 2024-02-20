@@ -2,24 +2,20 @@
 
 use resvg::usvg::TreeParsing;
 use serenity::{
-	builder::CreateApplicationCommand,
-	model::prelude::{
-		application_command::ApplicationCommandInteraction, command::CommandOptionType,
-		InteractionResponseType,
-	},
+	all::{CommandInteraction, CommandOptionType},
+	builder::{CreateCommand, CreateCommandOption},
 };
 
 use crate::{context::Context, emojis_with_counts::EmojisWithCounts, util::ReplyShortcuts};
 
 use super::read_emoji_svg;
 
-pub async fn execute(context: Context<'_>, interaction: ApplicationCommandInteraction) {
+pub async fn execute(context: Context<'_>, interaction: CommandInteraction) {
 	let input_emoji = interaction
 		.data
 		.options
 		.get(0)
-		.and_then(|option| option.value.as_ref())
-		.and_then(|value| value.as_str())
+		.and_then(|option| option.value.as_str())
 		.unwrap()
 		.trim();
 	let Some(emoji) = context.emoji_map.get(input_emoji) else {
@@ -61,25 +57,19 @@ pub async fn execute(context: Context<'_>, interaction: ApplicationCommandIntera
 	};
 
 	let _ = interaction
-		.create_interaction_response(&context.http, |response| {
-			response
-				.kind(InteractionResponseType::ChannelMessageWithSource)
-				.interaction_response_data(|message| {
-					message.add_file((png.as_slice(), "emoji.png"))
-				})
-		})
+		.reply_image(context.http, png.as_slice(), "emoji.png")
 		.await;
 }
 
-pub fn register(command: &mut CreateApplicationCommand) -> &mut CreateApplicationCommand {
-	command
-		.name("image")
+pub fn register() -> CreateCommand {
+	CreateCommand::new("image")
 		.description("Generates a raster image version of a specified emoji from your inventory.")
-		.create_option(|option| {
-			option
-				.name("emoji")
-				.description("The emoji to rasterize.")
-				.kind(CommandOptionType::String)
-				.required(true)
-		})
+		.add_option(
+			CreateCommandOption::new(
+				CommandOptionType::String,
+				"emoji",
+				"The emoji to rasterize.",
+			)
+			.required(true),
+		)
 }

@@ -63,7 +63,7 @@ impl TradeOffer {
 		};
 		Self {
 			offering_user: user,
-			target_user: UserId(0),
+			target_user: UserId::new(0),
 			offer,
 			request: EmojisWithCounts::from_iter([(random_emoji, 1)]),
 		}

@@ -34,17 +34,21 @@ impl<'l> Context<'l> {
 
 	/// Gives nickname if possible, otherwise display name, otherwise ID as a string.
 	pub async fn get_user_name(&self, guild: GuildId, user: UserId) -> String {
-		let member = if let Some(member) = self.cache.member(guild, user) {
+		let member = if let Some(member) = self
+			.cache
+			.member(guild, user)
+			.map(|member| member.to_owned())
+		{
 			member
-		} else if let Ok(member) = self.http.get_member(guild.0, user.0).await {
+		} else if let Ok(member) = self.http.get_member(guild, user).await {
 			member
 		} else {
-			return format!("{}", user.0);
+			return format!("{}", user);
 		};
 		if let Some(nick) = member.nick {
-			nick
+			nick.to_owned()
 		} else {
-			member.display_name().to_string()
+			member.display_name().to_owned()
 		}
 	}
 }

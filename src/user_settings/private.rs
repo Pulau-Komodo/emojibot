@@ -1,13 +1,13 @@
 use serenity::{
-	builder::CreateApplicationCommand,
-	model::prelude::{application_command::ApplicationCommandInteraction, UserId},
+	all::{CommandInteraction, UserId},
+	builder::CreateCommand,
 };
 use sqlx::{query, Pool, Sqlite};
 
 use crate::{context::Context, util::ReplyShortcuts};
 
 pub async fn is_private(executor: &Pool<Sqlite>, user: UserId) -> bool {
-	let user_id = user.0 as i64;
+	let user_id = user.get() as i64;
 	query!(
 		"
 		SELECT private
@@ -24,7 +24,7 @@ pub async fn is_private(executor: &Pool<Sqlite>, user: UserId) -> bool {
 
 /// Toggles a user's private setting, and returns whether it is now private or not.
 async fn toggle_private(executor: &Pool<Sqlite>, user: UserId) -> bool {
-	let user_id = user.0 as i64;
+	let user_id = user.get() as i64;
 	query!(
 		"
 		INSERT INTO user_settings (user, private)
@@ -41,7 +41,7 @@ async fn toggle_private(executor: &Pool<Sqlite>, user: UserId) -> bool {
 	.private != 0
 }
 
-pub async fn execute(context: Context<'_>, interaction: ApplicationCommandInteraction) {
+pub async fn execute(context: Context<'_>, interaction: CommandInteraction) {
 	let is_private = toggle_private(context.database, interaction.user.id).await;
 	let content = if is_private {
 		"Your emoji inventory was set to private. Others can no longer view your emoji inventory or find emojis in your inventory, recycling input and outcome will be private, and you won't be notified of new emojis through reactions."
@@ -51,8 +51,7 @@ pub async fn execute(context: Context<'_>, interaction: ApplicationCommandIntera
 	let _ = interaction.ephemeral_reply(context.http, content).await;
 }
 
-pub fn register(command: &mut CreateApplicationCommand) -> &mut CreateApplicationCommand {
-	command
-		.name("private")
+pub fn register() -> CreateCommand {
+	CreateCommand::new("private")
 		.description("Toggle whether your emoji inventory should be private.")
 }

@@ -1,3 +1,5 @@
+#![allow(clippy::get_first)]
+
 use std::fs;
 
 use discord_events::DiscordEventHandler;

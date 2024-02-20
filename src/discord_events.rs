@@ -31,7 +31,7 @@ impl EventHandler for DiscordEventHandler {
 
 	async fn interaction_create(&self, context: Context, interaction: Interaction) {
 		let shard_manager = context.shard;
-		if let Interaction::ApplicationCommand(interaction) = interaction {
+		if let Interaction::Command(interaction) = interaction {
 			let context = crate::context::Context::new(
 				&self.database,
 				&self.emoji_map,
@@ -60,26 +60,23 @@ impl EventHandler for DiscordEventHandler {
 		if let Some(arg) = arg {
 			if &arg == "register" {
 				for guild in context.cache.guilds() {
-					let commands = guild
-						.set_application_commands(&context.http, |commands| {
-							commands
-								.create_application_command(inventory::view::register)
-								.create_application_command(inventory::group::register)
-								.create_application_command(find_emoji::register)
-								.create_application_command(trading::trade::register)
-								.create_application_command(trading::recycling::register)
-								.create_application_command(user_settings::private::register)
-								.create_application_command(images::rasterize::register)
-								.create_application_command(images::generate::register)
-								.create_application_command(images::generate::register_test)
-						})
-						.await
-						.unwrap();
+					let commands = vec![
+						inventory::view::register(),
+						inventory::group::register(),
+						find_emoji::register(),
+						trading::trade::register(),
+						trading::recycling::register(),
+						user_settings::private::register(),
+						images::rasterize::register(),
+						images::generate::register(),
+						images::generate::register_test(),
+					];
+					let commands = guild.set_commands(&context.http, commands).await.unwrap();
 
 					let command_names = commands.into_iter().map(|command| command.name).join(", ");
 					println!(
 						"I now have the following guild slash commands in guild {}: {}",
-						guild.as_u64(),
+						guild.get(),
 						command_names
 					);
 				}

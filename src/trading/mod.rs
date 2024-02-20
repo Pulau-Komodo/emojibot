@@ -4,13 +4,12 @@ pub(crate) mod trade;
 mod trade_offer;
 
 use serenity::{
-	builder::CreateComponents,
-	client::bridge::gateway::ShardMessenger,
-	model::prelude::{
-		application_command::{ApplicationCommandInteraction, CommandDataOption},
-		component::ButtonStyle,
-		GuildId, InteractionResponseType, UserId,
+	all::{ButtonStyle, CommandDataOption, CommandInteraction, GuildId, UserId},
+	builder::{
+		CreateActionRow, CreateButton, CreateInteractionResponse,
+		CreateInteractionResponseFollowup, CreateInteractionResponseMessage,
 	},
+	gateway::ShardMessenger,
 };
 use sqlx::{Pool, Sqlite};
 use std::fmt::Write;
@@ -35,11 +34,11 @@ pub(super) async fn try_offer_trade(
 	if does_trade_offer_exist(context.database, user, target_user).await {
 		return Err(String::from("You already have a trade offer to that user."));
 	}
-	let offer = get_and_parse_emoji_option(context.emoji_map, &options, 1)?;
+	let offer = get_and_parse_emoji_option(context.emoji_map, options.get(1))?;
 	if offer.is_empty() {
 		return Err(String::from("Offer is empty."));
 	}
-	let request = get_and_parse_emoji_option(context.emoji_map, &options, 2)?;
+	let request = get_and_parse_emoji_option(context.emoji_map, options.get(2))?;
 	if request.is_empty() {
 		return Err(String::from("Request is empty."));
 	}
@@ -145,7 +144,7 @@ pub(super) async fn view_offers(
 pub(super) async fn try_accept_offer(
 	context: Context<'_>,
 	shard_messenger: ShardMessenger,
-	interaction: &ApplicationCommandInteraction,
+	interaction: &CommandInteraction,
 	guild: GuildId,
 	accepting_user: UserId,
 	offering_user: UserId,
@@ -183,40 +182,33 @@ pub(super) async fn try_accept_offer(
 	};
 	let content = format!("You are about to accept the trade offer from {offerer_name}.\nYou will **lose** the following emoji{s1}: {}\nYou will **gain** the following emoji{s2}: {}\nDo you want to proceed?", trade.request(), trade.offer());
 
+	let components = vec![CreateActionRow::Buttons(vec![
+		CreateButton::new("yes")
+			.label("Yes")
+			.style(ButtonStyle::Primary),
+		CreateButton::new("no")
+			.label("No")
+			.style(ButtonStyle::Secondary),
+	])];
+
 	let _ = interaction
-		.create_interaction_response(&context.http, |interaction| {
-			interaction
-				.kind(InteractionResponseType::ChannelMessageWithSource)
-				.interaction_response_data(|data| {
-					data.content(content)
-						.ephemeral(true)
-						.components(|component| {
-							component.create_action_row(|row| {
-								row.create_button(|button| {
-									button
-										.label("Yes")
-										.style(ButtonStyle::Primary)
-										.custom_id("yes")
-								})
-								.create_button(|button| {
-									button
-										.label("No")
-										.style(ButtonStyle::Secondary)
-										.custom_id("no")
-								})
-							})
-						})
-				})
-		})
+		.create_response(
+			&context.http,
+			CreateInteractionResponse::Message(
+				CreateInteractionResponseMessage::new()
+					.content(content)
+					.ephemeral(true)
+					.components(components),
+			),
+		)
 		.await;
 
 	let message = interaction
-		.get_interaction_response(&context.http)
+		.get_response(&context.http)
 		.await
 		.map_err(|_| String::from("Error retrieving interaction response."))?;
 	let button_press = message
 		.await_component_interaction(shard_messenger)
-		.collect_limit(1)
 		.timeout(std::time::Duration::from_secs(60))
 		.await;
 
@@ -235,57 +227,56 @@ pub(super) async fn try_accept_offer(
 				match result {
 					Ok(content) => {
 						let _ = button_press
-							.create_interaction_response(&context.http, |response| {
-								response
-									.kind(InteractionResponseType::ChannelMessageWithSource)
-									.interaction_response_data(|data| {
-										data.content(content).ephemeral(false)
-									})
-							})
+							.create_response(
+								&context.http,
+								CreateInteractionResponse::Message(
+									CreateInteractionResponseMessage::new()
+										.content(content)
+										.ephemeral(false),
+								),
+							)
 							.await;
 					}
 					Err(content) => {
 						let _ = button_press
-							.create_interaction_response(&context.http, |response| {
-								response
-									.kind(InteractionResponseType::ChannelMessageWithSource)
-									.interaction_response_data(|data| {
-										data.content(content).ephemeral(true)
-									})
-							})
+							.create_response(
+								&context.http,
+								CreateInteractionResponse::Message(
+									CreateInteractionResponseMessage::new()
+										.content(content)
+										.ephemeral(true),
+								),
+							)
 							.await;
 					}
 				}
 
-				let _ = interaction
-					.delete_original_interaction_response(&context.http)
-					.await;
+				let _ = interaction.delete_response(&context.http).await;
 			}
 			"no" => {
 				let _ = button_press
-					.create_interaction_response(&context.http, |response| {
-						response
-							.kind(InteractionResponseType::UpdateMessage)
-							.interaction_response_data(|data| {
-								data.content("You have cancelled the trade.")
-									.set_components(CreateComponents::default())
-							})
-					})
+					.create_response(
+						&context.http,
+						CreateInteractionResponse::UpdateMessage(
+							CreateInteractionResponseMessage::new()
+								.content("You have cancelled the trade.")
+								.components(vec![]),
+						),
+					)
 					.await;
 			}
 			_ => panic!(),
 		}
 	} else {
 		let _ = interaction
-			.create_followup_message(&context.http, |response| {
-				response
+			.create_followup(
+				&context.http,
+				CreateInteractionResponseFollowup::new()
 					.content("The trade confirmation has timed out.")
-					.ephemeral(true)
-			})
+					.ephemeral(true),
+			)
 			.await;
-		let _ = interaction
-			.delete_original_interaction_response(&context.http)
-			.await;
+		let _ = interaction.delete_response(&context.http).await;
 	}
 	Ok(())
 }

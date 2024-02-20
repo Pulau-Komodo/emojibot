@@ -27,7 +27,7 @@ impl EmojisWithCounts {
 		emoji_map: &EmojiMap,
 		user: UserId,
 	) -> Self {
-		let user_id = *user.as_u64() as i64;
+		let user_id = user.get() as i64;
 		let mut emojis = query!(
 			"
 			SELECT emoji, COUNT(*) AS count
@@ -73,7 +73,7 @@ impl EmojisWithCounts {
 
 	/// Check a user's emoji inventory to see if it has the emojis.
 	pub async fn are_owned_by_user(&self, database: &Pool<Sqlite>, user: UserId) -> bool {
-		let user_id = user.0 as i64;
+		let user_id = user.get() as i64;
 		let mut transaction = database.begin().await.unwrap();
 		for (emoji, target_count) in &self.0 {
 			let emoji = emoji.as_str();

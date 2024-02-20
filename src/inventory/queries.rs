@@ -6,7 +6,7 @@ use sqlx::{query, Pool, Sqlite, SqliteExecutor, Transaction};
 use crate::{emoji::EmojiMap, emojis_with_counts::EmojisWithCounts};
 
 pub async fn remove_empty_groups(executor: &mut Transaction<'_, Sqlite>, user: UserId) {
-	let user_id = user.0 as i64;
+	let user_id = user.get() as i64;
 	let deleted_any = query!(
 		"
 		DELETE FROM emoji_inventory_groups
@@ -23,7 +23,7 @@ pub async fn remove_empty_groups(executor: &mut Transaction<'_, Sqlite>, user: U
 }
 
 async fn close_ordering_gaps(executor: &mut Transaction<'_, Sqlite>, user: UserId) {
-	let user_id = user.0 as i64;
+	let user_id = user.get() as i64;
 	let groups = query!(
 		"
 		SELECT name
@@ -62,7 +62,7 @@ pub(super) async fn add_to_group(
 	group_name: &str,
 	emojis: &EmojisWithCounts,
 ) -> (String, EmojisWithCounts) {
-	let user_id = user.0 as i64;
+	let user_id = user.get() as i64;
 	let mut transaction = executor.begin().await.unwrap();
 	let group_count = query!(
 		"
@@ -142,7 +142,7 @@ pub(super) async fn remove_from_group(
 	emojis: &EmojisWithCounts,
 	group: Option<&str>,
 ) -> EmojisWithCounts {
-	let user_id = user.0 as i64;
+	let user_id = user.get() as i64;
 	let mut degrouped_emojis = Vec::new();
 
 	let mut transaction = executor.begin().await.unwrap();
@@ -217,7 +217,7 @@ async fn get_current_group_name<'a, E: SqliteExecutor<'a>>(
 	user: UserId,
 	group: &str,
 ) -> Option<String> {
-	let user_id = user.0 as i64;
+	let user_id = user.get() as i64;
 	query!(
 		"
 		SELECT name
@@ -249,7 +249,7 @@ pub(super) async fn rename_group(
 		return Err(RenameGroupError::NoSuchGroup);
 	};
 
-	let user_id = user.0 as i64;
+	let user_id = user.get() as i64;
 	if let Err(error) = query!(
 		"
 		UPDATE emoji_inventory_groups
@@ -286,7 +286,7 @@ pub(super) async fn list_groups(
 	executor: &Pool<Sqlite>,
 	user: UserId,
 ) -> (Vec<(String, u32)>, u32) {
-	let user_id = user.0 as i64;
+	let user_id = user.get() as i64;
 	let records = query!(
 		"
 		SELECT emoji_inventory_groups.name, COUNT(*) as emoji_count
@@ -326,7 +326,7 @@ pub(crate) async fn get_group_contents<'a, E: SqliteExecutor<'a>>(
 	user: UserId,
 	group: &str,
 ) -> EmojisWithCounts {
-	let user_id = user.0 as i64;
+	let user_id = user.get() as i64;
 	let records = query!(
 		"
 		SELECT emoji, COUNT(*) as count
@@ -382,7 +382,7 @@ pub(super) async fn reposition_group(
 	group: &str,
 	new_position: u32,
 ) -> Result<(String, RepositionOutcome, u32, u32), ()> {
-	let user_id = user.0 as i64;
+	let user_id = user.get() as i64;
 
 	let mut transaction = database.begin().await.unwrap();
 

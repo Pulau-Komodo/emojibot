@@ -7,7 +7,7 @@ use sqlx::{query, Pool, Sqlite};
 use crate::{emoji::Emoji, queries::give_emoji, user_settings::private::is_private};
 
 async fn seen_today(database: &Pool<Sqlite>, user: UserId) -> bool {
-	let user_id = *user.as_u64() as i64;
+	let user_id = user.get() as i64;
 	let seen = query!(
 		"
 		SELECT CASE
