@@ -125,8 +125,8 @@ impl Display for EmojisWithCounts {
 			f.write_str(emoji.as_str())?;
 			if *count > 1 {
 				f.write_fmt(format_args!("x{count}"))?;
-			} else {
-				f.write_str(ZWNJ)?; // To avoid some emojis combining inappropriately.
+			} else if (1580..=1605).contains(&emoji.index()) {
+				f.write_str(ZWNJ)?; // To avoid regional indicator emojis combining inappropriately.
 			}
 		}
 		Ok(())

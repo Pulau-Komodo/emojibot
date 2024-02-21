@@ -42,6 +42,9 @@ impl Emoji {
 		}
 		string + ".svg"
 	}
+	pub fn index(&self) -> usize {
+		self.index
+	}
 }
 
 impl Display for Emoji {
@@ -107,5 +110,16 @@ mod tests {
 			emoji.file_name(),
 			"1f468-200d-1f469-200d-1f467-200d-1f466.svg"
 		); // Large ZWJ-based composite
+	}
+	#[test]
+	fn find_a_and_z() {
+		let map = make_emoji_map();
+		assert_eq!(
+			(Some(1605), Some(1580)),
+			(
+				map.get("🇦").map(Emoji::index),
+				map.get("🇿").map(Emoji::index),
+			)
+		)
 	}
 }
