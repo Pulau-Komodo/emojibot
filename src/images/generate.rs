@@ -14,7 +14,7 @@ use sqlx::{Pool, Sqlite};
 
 use crate::{
 	context::Context,
-	emoji::EmojiMap,
+	emoji::{Emoji, EmojiMap},
 	emojis_with_counts::EmojisWithCounts,
 	inventory::queries::get_group_contents,
 	util::{parse_emoji_input, ReplyShortcuts},
@@ -22,10 +22,8 @@ use crate::{
 
 use super::read_emoji_svg;
 
-const EMOJI_SIZE: f32 = 40.0;
-/// (`EMOJI_SIZE`^2*2)^0.5, rounded up.
-const EMOJI_SIZE_WITH_ROTATION_MARGIN: f32 = 57.0;
-const EMOJI_ROTATION_MARGIN: f32 = (EMOJI_SIZE_WITH_ROTATION_MARGIN - EMOJI_SIZE) / 2.0;
+/// The base size (in pixels across) of an emoji rendered based on a single inventory emoji.
+const EMOJI_SIZE: f32 = 90.0;
 
 const CANVAS_WIDTH: u32 = 500;
 const CANVAS_HEIGHT: u32 = 250;
@@ -37,20 +35,37 @@ fn random_angle(rng: &mut rand::rngs::ThreadRng) -> f32 {
 		.sample(rng)
 }
 
+struct EmojiToRender {
+	emoji: Emoji,
+	/// Size in multiple of base size.
+	size: f32,
+}
+
+impl EmojiToRender {
+	fn new(emoji: Emoji, fraction: f32) -> Self {
+		Self {
+			emoji,
+			size: fraction.sqrt(),
+		}
+	}
+}
+
 fn place_emoji_randomly(
 	canvas: &mut resvg::tiny_skia::PixmapMut,
 	tree: &resvg::Tree,
+	size: f32,
 	rng: &mut rand::rngs::ThreadRng,
 ) {
 	let canvas_width = canvas.width() as f32;
 	let canvas_height = canvas.height() as f32;
-	let width = EMOJI_SIZE_WITH_ROTATION_MARGIN;
-	let height = EMOJI_SIZE_WITH_ROTATION_MARGIN;
+	let size = size * EMOJI_SIZE;
+	let size_with_margin = (size.powi(2) * 2.0).sqrt().ceil();
+	let half_margin = ((size_with_margin - size) / 2.0).ceil();
 	// Add half rotation margin so rotation can't make it go over the left or top edges.
-	let x = rng.gen_range(0.0..canvas_width) + EMOJI_ROTATION_MARGIN;
-	let y = rng.gen_range(0.0..canvas_height) + EMOJI_ROTATION_MARGIN;
+	let x = rng.gen_range(0.0..canvas_width) + half_margin;
+	let y = rng.gen_range(0.0..canvas_height) + half_margin;
 
-	let scale = EMOJI_SIZE / tree.view_box.rect.width();
+	let scale = size / tree.view_box.rect.width();
 	let angle = random_angle(rng).to_degrees();
 	let transform = resvg::tiny_skia::Transform::from_rotate_at(
 		angle,
@@ -61,15 +76,15 @@ fn place_emoji_randomly(
 
 	tree.render(transform.post_translate(x, y), canvas);
 
-	if x + width > canvas_width {
+	if x + size_with_margin > canvas_width {
 		let x = x - canvas_width;
 		tree.render(transform.post_translate(x, y), canvas);
 	}
-	if y + height > canvas_height {
+	if y + size_with_margin > canvas_height {
 		let y = y - canvas_height;
 		tree.render(transform.post_translate(x, y), canvas);
 	}
-	if x + width > canvas_width && y + height > canvas_height {
+	if x + size_with_margin > canvas_width && y + size_with_margin > canvas_height {
 		let x = x - canvas_width;
 		let y = y - canvas_height;
 		tree.render(transform.post_translate(x, y), canvas);
@@ -98,6 +113,28 @@ async fn parse_emoji_and_group_input<'s>(
 		}
 	}
 	Ok(EmojisWithCounts::from_flat(&emojis))
+}
+
+fn generate(emojis: impl IntoIterator<Item = EmojiToRender>) -> Option<resvg::tiny_skia::Pixmap> {
+	let mut canvas = resvg::tiny_skia::Pixmap::new(CANVAS_WIDTH, CANVAS_HEIGHT).unwrap();
+	let image_trees = emojis
+		.into_iter()
+		.map(|emoji| {
+			let svg = read_emoji_svg(&emoji.emoji)?;
+			let tree =
+				resvg::usvg::Tree::from_data(&svg, &resvg::usvg::Options::default()).unwrap();
+			Some((resvg::Tree::from_usvg(&tree), emoji.size))
+		})
+		.collect::<Option<Vec<_>>>()?;
+
+	let mut rng = rand::thread_rng();
+	let canvas_mut = &mut canvas.as_mut();
+	for _ in 0..EMOJI_REPETITION {
+		for (tree, size) in &image_trees {
+			place_emoji_randomly(canvas_mut, tree, *size, &mut rng);
+		}
+	}
+	Some(canvas)
 }
 
 pub async fn execute_test(context: Context<'_>, interaction: CommandInteraction) {
@@ -151,34 +188,17 @@ pub async fn execute(context: Context<'_>, interaction: CommandInteraction) {
 		return;
 	}
 
-	let mut canvas = resvg::tiny_skia::Pixmap::new(CANVAS_WIDTH, CANVAS_HEIGHT).unwrap();
-	{
-		let Some(image_trees) = emojis
+	let Some(canvas) = generate(
+		emojis
 			.flatten()
 			.into_iter()
-			.map(|emoji| {
-				let svg = read_emoji_svg(&emoji)?;
-				let tree =
-					resvg::usvg::Tree::from_data(&svg, &resvg::usvg::Options::default()).unwrap();
-				Some(resvg::Tree::from_usvg(&tree))
-			})
-			.collect::<Option<Vec<_>>>()
-		else {
-			let _ = interaction
-				.ephemeral_reply(context.http, "Some file missing.")
-				.await;
-			return;
-		};
-
-		let mut rng = rand::thread_rng();
-		let canvas_mut = &mut canvas.as_mut();
-		for _ in 0..EMOJI_REPETITION {
-			for tree in &image_trees {
-				place_emoji_randomly(canvas_mut, tree, &mut rng);
-			}
-		}
-	}
-
+			.map(|emoji| EmojiToRender::new(emoji, 0.2)),
+	) else {
+		let _ = interaction
+			.ephemeral_reply(context.http, "Some file missing.")
+			.await;
+		return;
+	};
 	let image = canvas.encode_png().unwrap();
 
 	let _ = interaction
