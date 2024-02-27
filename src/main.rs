@@ -3,7 +3,7 @@
 use std::fs;
 
 use discord_events::DiscordEventHandler;
-use emoji::make_emoji_map;
+use emoji::EmojiMap;
 use serenity::prelude::GatewayIntents;
 use sqlx::sqlite::SqlitePoolOptions;
 
@@ -33,7 +33,7 @@ async fn main() {
 		.await
 		.unwrap();
 
-	let emoji_map = make_emoji_map();
+	let emoji_map = EmojiMap::new();
 
 	let handler = DiscordEventHandler::new(db_pool, emoji_map);
 	let mut client = serenity::Client::builder(

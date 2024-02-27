@@ -45,8 +45,7 @@ impl EmojisWithCounts {
 			(record.count > 0).then_some((
 				emoji_map
 					.get(record.emoji.as_str())
-					.expect("Emoji from database was somehow not in map.")
-					.emoji(),
+					.expect("Emoji from database was somehow not in map."),
 				record.count as u32,
 			))
 		})

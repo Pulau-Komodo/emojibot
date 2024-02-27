@@ -17,38 +17,6 @@ pub struct Emoji {
 	index: usize,
 }
 
-impl Display for Emoji {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		write!(f, "{}", self.emoji)
-	}
-}
-
-impl PartialOrd for Emoji {
-	fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-		Some(self.index.cmp(&other.index))
-	}
-}
-
-impl Ord for Emoji {
-	fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-		self.index.cmp(&other.index)
-	}
-}
-
-impl PartialEq for Emoji {
-	fn eq(&self, other: &Self) -> bool {
-		self.index == other.index
-	}
-}
-
-impl Hash for Emoji {
-	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-		state.write_usize(self.index);
-	}
-}
-
-impl Eq for Emoji {}
-
 impl Emoji {
 	pub fn random() -> Self {
 		let index = thread_rng().gen_range(0..EMOJI_LIST.len());
@@ -95,14 +63,46 @@ impl Emoji {
 	}
 }
 
-#[derive(Debug, Clone)]
-pub struct EmojiWithImage {
-	emoji: Emoji,
-	/// An SVG render tree.
-	image: resvg::usvg::Tree,
+impl Display for Emoji {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		write!(f, "{}", self.emoji)
+	}
 }
 
-impl EmojiWithImage {
+impl PartialOrd for Emoji {
+	fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+		Some(self.index.cmp(&other.index))
+	}
+}
+
+impl Ord for Emoji {
+	fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+		self.index.cmp(&other.index)
+	}
+}
+
+impl PartialEq for Emoji {
+	fn eq(&self, other: &Self) -> bool {
+		self.index == other.index
+	}
+}
+
+impl Hash for Emoji {
+	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+		state.write_usize(self.index);
+	}
+}
+
+impl Eq for Emoji {}
+
+#[derive(Debug, Clone, Copy)]
+pub struct EmojiWithImage<'t> {
+	emoji: Emoji,
+	/// An SVG render tree.
+	image: &'t resvg::usvg::Tree,
+}
+
+impl<'t> EmojiWithImage<'t> {
 	pub fn emoji(&self) -> Emoji {
 		self.emoji
 	}
@@ -112,39 +112,39 @@ impl EmojiWithImage {
 	pub fn index(&self) -> usize {
 		self.emoji.index
 	}
-	pub fn image(&self) -> &resvg::usvg::Tree {
-		&self.image
+	pub fn image(&'t self) -> &'t resvg::usvg::Tree {
+		self.image
 	}
 	pub fn render(
 		&self,
 		transform: resvg::tiny_skia::Transform,
 		pixmap: &mut resvg::tiny_skia::PixmapMut,
 	) {
-		resvg::render(&self.image, transform, pixmap);
+		resvg::render(self.image, transform, pixmap);
 	}
 }
 
-impl PartialOrd for EmojiWithImage {
+impl PartialOrd for EmojiWithImage<'_> {
 	fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
 		Some(self.emoji.index.cmp(&other.emoji.index))
 	}
 }
 
-impl Ord for EmojiWithImage {
+impl Ord for EmojiWithImage<'_> {
 	fn cmp(&self, other: &Self) -> std::cmp::Ordering {
 		self.emoji.index.cmp(&other.emoji.index)
 	}
 }
 
-impl PartialEq for EmojiWithImage {
+impl PartialEq for EmojiWithImage<'_> {
 	fn eq(&self, other: &Self) -> bool {
 		self.emoji.index == other.emoji.index
 	}
 }
 
-impl Eq for EmojiWithImage {}
+impl Eq for EmojiWithImage<'_> {}
 
-impl From<EmojiWithImage> for ReactionType {
+impl From<EmojiWithImage<'_>> for ReactionType {
 	fn from(emoji: EmojiWithImage) -> ReactionType {
 		ReactionType::Unicode(String::from(emoji.str()))
 	}
@@ -156,24 +156,54 @@ impl From<Emoji> for ReactionType {
 	}
 }
 
-pub type EmojiMap = HashMap<&'static str, EmojiWithImage>;
-
-pub fn make_emoji_map() -> EmojiMap {
-	let mut emoji_map = EmojiMap::with_capacity(EMOJI_LIST.len());
+pub fn load_emojis() -> Vec<resvg::usvg::Tree> {
 	let options = resvg::usvg::Options::default();
 	let fonts = resvg::usvg::fontdb::Database::default();
-	emoji_map.extend(
-		EMOJI_LIST
-			.into_iter()
-			.enumerate()
-			.filter_map(|(index, emoji)| {
-				let emoji = Emoji { emoji, index };
-				let image = emoji.read_svg()?;
-				let image = resvg::usvg::Tree::from_data(&image, &options, &fonts).ok()?;
-				Some((emoji.as_str(), EmojiWithImage { emoji, image }))
-			}),
-	);
-	emoji_map
+	EMOJI_LIST
+		.into_iter()
+		.enumerate()
+		.map(|(index, emoji)| {
+			let emoji = Emoji { emoji, index };
+			let image = emoji.read_svg().unwrap();
+			resvg::usvg::Tree::from_data(&image, &options, &fonts).unwrap()
+		})
+		.collect()
+}
+
+pub struct EmojiMap {
+	map: HashMap<&'static str, Emoji>,
+	images: Vec<resvg::usvg::Tree>,
+}
+
+impl EmojiMap {
+	pub fn new() -> Self {
+		let images = load_emojis();
+		let mut map = HashMap::with_capacity(EMOJI_LIST.len());
+		map.extend(
+			EMOJI_LIST
+				.into_iter()
+				.enumerate()
+				.map(|(index, emoji)| (emoji, Emoji { emoji, index })),
+		);
+		Self { map, images }
+	}
+	pub fn get(&self, emoji: &str) -> Option<Emoji> {
+		self.map.get(emoji).copied()
+	}
+	pub fn get_with_image(&self, emoji: &str) -> Option<EmojiWithImage> {
+		self.map.get(emoji).map(|emoji| self.get_image(*emoji))
+	}
+	/// This gets the image by index, avoiding a hash look-up.
+	pub fn get_image(&self, emoji: Emoji) -> EmojiWithImage {
+		let image = &self.images[emoji.index()];
+		EmojiWithImage { emoji, image }
+	}
+}
+
+impl Default for EmojiMap {
+	fn default() -> Self {
+		Self::new()
+	}
 }
 
 #[cfg(test)]
@@ -208,13 +238,7 @@ mod tests {
 	}
 	#[test]
 	fn find_a_and_z() {
-		let map = make_emoji_map();
-		assert_eq!(
-			(Some(1605), Some(1580)),
-			(
-				map.get(&"🇦").map(EmojiWithImage::index),
-				map.get(&"🇿").map(EmojiWithImage::index),
-			)
-		)
+		assert_eq!(EMOJI_LIST[1605], "🇦");
+		assert_eq!(EMOJI_LIST[1580], "🇿");
 	}
 }

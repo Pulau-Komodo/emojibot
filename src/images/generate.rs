@@ -34,13 +34,13 @@ fn random_angle(rng: &mut rand::rngs::ThreadRng) -> f32 {
 
 #[derive(Debug, Clone, Copy)]
 struct EmojiToRender<'l> {
-	emoji: &'l EmojiWithImage,
+	emoji: EmojiWithImage<'l>,
 	/// Size in multiple of base size.
 	size: f32,
 }
 
 impl<'l> EmojiToRender<'l> {
-	fn new(emoji: &'l EmojiWithImage, fraction: f32) -> Self {
+	fn new(emoji: EmojiWithImage<'l>, fraction: f32) -> Self {
 		Self {
 			emoji,
 			size: fraction.sqrt(),
@@ -184,10 +184,7 @@ pub async fn execute(context: Context<'_>, interaction: CommandInteraction) {
 			.flatten()
 			.into_iter()
 			.map(|emoji| {
-				let emoji = context
-					.emoji_map
-					.get(emoji.as_str())
-					.expect("Could not find emoji in emoji map.");
+				let emoji = context.emoji_map.get_image(emoji);
 				EmojiToRender::new(emoji, 0.2)
 			})
 			.cycle()

@@ -86,12 +86,9 @@ pub fn parse_emoji_input(emoji_map: &EmojiMap, input: &str) -> Result<Vec<Emoji>
 				return None;
 			}
 			grapheme = grapheme.trim_end_matches(ZWNJ);
-			let emoji = emoji_map
-				.get(grapheme)
-				.ok_or_else(|| {
-					format!("Could not recognize \"{grapheme}\" as an emoji in my list.")
-				})
-				.map(|emoji| emoji.emoji());
+			let emoji = emoji_map.get(grapheme).ok_or_else(|| {
+				format!("Could not recognize \"{grapheme}\" as an emoji in my list.")
+			});
 			Some(emoji)
 		})
 		.collect()

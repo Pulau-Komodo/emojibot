@@ -15,7 +15,7 @@ pub async fn execute(context: Context<'_>, interaction: CommandInteraction) {
 		.and_then(|option| option.value.as_str())
 		.unwrap()
 		.trim();
-	let Some(emoji) = context.emoji_map.get(input_emoji) else {
+	let Some(emoji) = context.emoji_map.get_with_image(input_emoji) else {
 		let _ = interaction
 			.ephemeral_reply(context.http, "No such emoji in my list.")
 			.await;

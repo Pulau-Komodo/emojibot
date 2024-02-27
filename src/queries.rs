@@ -39,7 +39,7 @@ pub async fn get_user_emojis_grouped(
 			emoji_groups
 				.entry(sort_order)
 				.or_default()
-				.push((emoji.emoji(), record.count as u32));
+				.push((emoji, record.count as u32));
 		}
 	}
 
