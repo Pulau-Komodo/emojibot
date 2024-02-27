@@ -344,7 +344,7 @@ pub(crate) async fn get_group_contents<'a, E: SqliteExecutor<'a>>(
 	.unwrap();
 	EmojisWithCounts::from_iter(records.into_iter().map(|record| {
 		(
-			*emoji_map.get(record.emoji.as_str()).unwrap(),
+			emoji_map.get(record.emoji.as_str()).unwrap().emoji(),
 			record.count as u32,
 		)
 	}))

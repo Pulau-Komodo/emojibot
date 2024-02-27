@@ -43,9 +43,10 @@ impl EmojisWithCounts {
 		.into_iter()
 		.filter_map(|record| {
 			(record.count > 0).then_some((
-				*emoji_map
+				emoji_map
 					.get(record.emoji.as_str())
-					.expect("Emoji from database was somehow not in map."),
+					.expect("Emoji from database was somehow not in map.")
+					.emoji(),
 				record.count as u32,
 			))
 		})

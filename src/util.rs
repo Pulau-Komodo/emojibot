@@ -91,7 +91,7 @@ pub fn parse_emoji_input(emoji_map: &EmojiMap, input: &str) -> Result<Vec<Emoji>
 				.ok_or_else(|| {
 					format!("Could not recognize \"{grapheme}\" as an emoji in my list.")
 				})
-				.map(|emoji| *emoji);
+				.map(|emoji| emoji.emoji());
 			Some(emoji)
 		})
 		.collect()

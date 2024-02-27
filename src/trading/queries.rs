@@ -90,10 +90,10 @@ pub(super) async fn get_trade_emojis(
 	.unwrap()
 	.into_iter()
 	.map(|record| {
-		let emoji = *emoji_map
+		let emoji = emoji_map
 			.get(record.emoji.as_str())
 			.expect("Could not find emoji from database in emoji map.");
-		(emoji, record.count)
+		(emoji.emoji(), record.count)
 	})
 	.collect::<Vec<_>>()
 }

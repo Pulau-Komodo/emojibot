@@ -6,10 +6,10 @@ use serenity::{
 };
 use sqlx::{query, Pool, Sqlite};
 
-use crate::{context::Context, emoji::Emoji, util::ReplyShortcuts};
+use crate::{context::Context, emoji::EmojiWithImage, util::ReplyShortcuts};
 
-async fn find_emoji_users(executor: &Pool<Sqlite>, emoji: Emoji) -> Vec<(UserId, i64)> {
-	let emoji = emoji.as_str();
+async fn find_emoji_users(executor: &Pool<Sqlite>, emoji: &EmojiWithImage) -> Vec<(UserId, i64)> {
+	let emoji = emoji.str();
 	let result = query!(
 		"
 		SELECT emoji_inventory.user, COUNT(*) as count
@@ -41,7 +41,7 @@ pub async fn execute(context: Context<'_>, interaction: CommandInteraction) {
 		.and_then(|option| option.value.as_str())
 		.unwrap_or("");
 
-	let Some(&emoji) = context.emoji_map.get(input) else {
+	let Some(emoji) = context.emoji_map.get(&input) else {
 		let content = format!("Could not find \"{}\" as an emoji in my list.", input);
 		let _ = interaction.ephemeral_reply(context.http, content).await;
 		return;
@@ -55,7 +55,7 @@ pub async fn execute(context: Context<'_>, interaction: CommandInteraction) {
 		let _ = interaction
 			.reply(
 				context.http,
-				format!("Nobody with a public inventory has {}.", emoji.as_str()),
+				format!("Nobody with a public inventory has {}.", emoji.str()),
 				!is_public,
 			)
 			.await;
@@ -64,12 +64,12 @@ pub async fn execute(context: Context<'_>, interaction: CommandInteraction) {
 	let mut output = if users.len() == 1 {
 		format!(
 			"The only user with a public inventory with {} is ",
-			emoji.as_str()
+			emoji.str()
 		)
 	} else {
 		format!(
 			"The users with public inventories with {} are ",
-			emoji.as_str()
+			emoji.str()
 		)
 	};
 

@@ -33,13 +33,13 @@ pub async fn get_user_emojis_grouped(
 	for record in records {
 		let sort_order = record.sort_order.map(|n| n as u32);
 		if record.count > 0 {
-			let emoji = *emoji_map
+			let emoji = emoji_map
 				.get(record.emoji.as_str())
 				.expect("Emoji from database was somehow not in map.");
 			emoji_groups
 				.entry(sort_order)
 				.or_default()
-				.push((emoji, record.count as u32));
+				.push((emoji.emoji(), record.count as u32));
 		}
 	}
 
