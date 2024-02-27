@@ -178,13 +178,11 @@ pub struct EmojiMap {
 impl EmojiMap {
 	pub fn new() -> Self {
 		let images = load_emojis();
-		let mut map = HashMap::with_capacity(EMOJI_LIST.len());
-		map.extend(
-			EMOJI_LIST
-				.into_iter()
-				.enumerate()
-				.map(|(index, emoji)| (emoji, Emoji { emoji, index })),
-		);
+		let map = EMOJI_LIST
+			.into_iter()
+			.enumerate()
+			.map(|(index, emoji)| (emoji, Emoji { emoji, index }))
+			.collect();
 		Self { map, images }
 	}
 	pub fn get(&self, emoji: &str) -> Option<Emoji> {
