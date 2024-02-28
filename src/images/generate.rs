@@ -73,15 +73,17 @@ fn place_emoji_randomly(
 	// Add half rotation margin so rotation can't make it go over the left or top edges.
 	let x = rng.gen_range(0.0..canvas_width) + half_margin;
 	let y = rng.gen_range(0.0..canvas_height) + half_margin;
+	let flip = emoji_to_render.emoji.should_mirror() && rng.gen_bool(0.5);
 
 	let scale = size / emoji.image().view_box().rect.width();
+	let horizontal_scale = if flip { -scale } else { scale };
 	let angle = random_angle(rng).to_degrees();
 	let transform = resvg::tiny_skia::Transform::from_rotate_at(
 		angle,
 		emoji.image().view_box().rect.width() / 2.0,
 		emoji.image().view_box().rect.height() / 2.0,
 	)
-	.post_scale(scale, scale);
+	.post_scale(horizontal_scale, scale);
 
 	emoji.render(transform.post_translate(x, y), canvas);
 

@@ -1,7 +1,9 @@
 use std::{
+	cmp::Ordering,
 	collections::HashMap,
 	fmt::{Display, Write},
 	hash::Hash,
+	ops::Range,
 };
 
 use crate::emoji_list::EMOJI_LIST;
@@ -9,6 +11,34 @@ use rand::{thread_rng, Rng};
 use serenity::model::prelude::ReactionType;
 
 const VS16: char = '\u{fe0f}';
+
+const NON_MIRROR_EMOJIS: [Range<usize>; 25] = [
+	53..54,
+	100..101,
+	134..136,
+	146..148,
+	157..159,
+	894..897,
+	910..911,
+	913..914,
+	919..920,
+	928..929,
+	936..937,
+	1072..1074,
+	1077..1082,
+	1085..1087,
+	1109..1114,
+	1115..1118,
+	1163..1164,
+	1173..1174,
+	1214..1215,
+	1226..1227,
+	1233..1235,
+	1237..1239,
+	1277..1279,
+	1304..1538,
+	1535..1875,
+];
 
 #[derive(Debug, Clone, Copy)]
 pub struct Emoji {
@@ -100,6 +130,8 @@ pub struct EmojiWithImage<'t> {
 	emoji: Emoji,
 	/// An SVG render tree.
 	image: &'t resvg::usvg::Tree,
+	/// Whether it's OK to mirror the emoji. Emojis with text should not be mirrored, for example.
+	should_mirror: bool,
 }
 
 impl<'t> EmojiWithImage<'t> {
@@ -121,6 +153,9 @@ impl<'t> EmojiWithImage<'t> {
 		pixmap: &mut resvg::tiny_skia::PixmapMut,
 	) {
 		resvg::render(self.image, transform, pixmap);
+	}
+	pub fn should_mirror(&self) -> bool {
+		self.should_mirror
 	}
 }
 
@@ -196,7 +231,22 @@ impl EmojiMap {
 	/// This gets the image by index, avoiding a hash look-up.
 	pub fn get_image(&self, emoji: Emoji) -> EmojiWithImage {
 		let image = &self.images[emoji.index()];
-		EmojiWithImage { emoji, image }
+		let should_mirror = NON_MIRROR_EMOJIS
+			.binary_search_by(|range| {
+				if range.start > emoji.index() {
+					Ordering::Greater
+				} else if range.end <= emoji.index() {
+					Ordering::Less
+				} else {
+					Ordering::Equal
+				}
+			})
+			.is_err();
+		EmojiWithImage {
+			emoji,
+			image,
+			should_mirror,
+		}
 	}
 }
 
