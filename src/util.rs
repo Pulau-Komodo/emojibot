@@ -148,7 +148,7 @@ pub fn parse_emoji_input_with_modifiers<'l>(
 			let end_index = index + grapheme.len();
 			if let Some(ref mut multiplier) = &mut multiplier.as_mut() {
 				multiplier.end = end_index;
-			} else if grapheme == "x" {
+			} else if grapheme == "x" || grapheme == "*" {
 				multiplier = Some(end_index..end_index);
 			} else if let Some(ref mut size_modifier) = &mut size_modifier {
 				size_modifier.end = end_index;
