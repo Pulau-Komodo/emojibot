@@ -299,6 +299,7 @@ pub async fn execute_v2(context: Context<'_>, interaction: CommandInteraction) {
 				format!("Minimum emoji size is {}.", EMOJI_MIN_FRACTION),
 			)
 			.await;
+		return;
 	}
 
 	let _ = interaction.defer(context.http).await;
