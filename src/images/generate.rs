@@ -70,10 +70,12 @@ fn place_emoji_randomly(
 	let emoji = emoji_to_render.emoji;
 	let size_with_margin = (size.powi(2) * 2.0).sqrt().ceil();
 	let half_margin = ((size_with_margin - size) / 2.0).ceil();
-	// Add half rotation margin so rotation can't make it go over the left or top edges.
-	let x = rng.gen_range(0.0..canvas_width) + half_margin;
-	let y = rng.gen_range(0.0..canvas_height) + half_margin;
 	let flip = emoji_to_render.emoji.should_mirror() && rng.gen_bool(0.5);
+	// If flipping, the image will end up on the left side of its own origin, but we still need it to never cross the left edge of the canvas.
+	let x_offset = if flip { size } else { 0.0 };
+	// Add half rotation margin so rotation can't make it go over the left or top edges.
+	let x = rng.gen_range(0.0..canvas_width) + half_margin + x_offset;
+	let y = rng.gen_range(0.0..canvas_height) + half_margin;
 
 	let scale = size / emoji.image().view_box().rect.width();
 	let horizontal_scale = if flip { -scale } else { scale };
