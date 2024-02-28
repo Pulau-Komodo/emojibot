@@ -13,10 +13,10 @@ use sqlx::{Pool, Sqlite};
 
 use crate::{
 	context::Context,
-	emoji::{EmojiMap, EmojiWithImage},
+	emoji::{Emoji, EmojiMap, EmojiWithImage},
 	emojis_with_counts::EmojisWithCounts,
 	inventory::queries::get_group_contents,
-	util::{parse_emoji_input, ReplyShortcuts},
+	util::{parse_emoji_input, parse_emoji_input_with_modifiers, ReplyShortcuts},
 };
 
 /// The base size (in pixels across) of an emoji rendered based on a single inventory emoji.
@@ -33,18 +33,29 @@ fn random_angle(rng: &mut rand::rngs::ThreadRng) -> f32 {
 }
 
 #[derive(Debug, Clone, Copy)]
-struct EmojiToRender<'l> {
+pub struct EmojiToRender<'l> {
 	emoji: EmojiWithImage<'l>,
+	fraction: f32,
 	/// Size in multiple of base size.
 	size: f32,
+	/// How many to render.
+	count: usize,
 }
 
 impl<'l> EmojiToRender<'l> {
-	fn new(emoji: EmojiWithImage<'l>, fraction: f32) -> Self {
+	pub fn new(emoji: EmojiWithImage<'l>, fraction: f32, count: usize) -> Self {
 		Self {
 			emoji,
+			fraction,
 			size: fraction.sqrt(),
+			count,
 		}
+	}
+	pub fn emoji(&self) -> Emoji {
+		self.emoji.emoji()
+	}
+	pub fn cost(&self) -> f32 {
+		self.fraction * self.count as f32
 	}
 }
 
@@ -113,23 +124,42 @@ async fn parse_emoji_and_group_input<'s>(
 	Ok(EmojisWithCounts::from_flat(&emojis))
 }
 
-fn generate<'l>(
-	emojis: impl IntoIterator<Item = EmojiToRender<'l>>,
-) -> Option<resvg::tiny_skia::Pixmap> {
+fn generate<'l>(emojis: impl IntoIterator<Item = EmojiToRender<'l>>) -> resvg::tiny_skia::Pixmap {
 	let mut canvas = resvg::tiny_skia::Pixmap::new(CANVAS_WIDTH, CANVAS_HEIGHT).unwrap();
 
 	let mut rng = rand::thread_rng();
 	let canvas_mut = &mut canvas.as_mut();
 	for emoji in emojis {
-		place_emoji_randomly(canvas_mut, &emoji, &mut rng);
+		for _ in 0..emoji.count {
+			place_emoji_randomly(canvas_mut, &emoji, &mut rng);
+		}
 	}
-	Some(canvas)
+	canvas
 }
 
 pub async fn execute_test(context: Context<'_>, interaction: CommandInteraction) {
+	let emojis = match parse_emoji_input_with_modifiers(
+		context.emoji_map,
+		interaction
+			.data
+			.options
+			.first()
+			.and_then(|option| option.value.as_str())
+			.unwrap(),
+	) {
+		Ok(emojis) => emojis,
+		Err(text) => {
+			let _ = interaction.ephemeral_reply(context.http, text).await;
+			return;
+		}
+	};
+	let image = generate(emojis).encode_png().unwrap();
 	let _ = interaction
-		.public_reply(context.http, "No test currently active.")
+		.reply_image(context.http, &image, "test.png")
 		.await;
+	// let _ = interaction
+	// 	.public_reply(context.http, "No test currently active.")
+	// 	.await;
 }
 
 pub fn register_test() -> CreateCommand {
@@ -179,22 +209,17 @@ pub async fn execute(context: Context<'_>, interaction: CommandInteraction) {
 
 	let emoji_count = emojis.emoji_count() as usize;
 
-	let Some(canvas) = generate(
+	let canvas = generate(
 		emojis
 			.flatten()
 			.into_iter()
 			.map(|emoji| {
 				let emoji = context.emoji_map.get_image(emoji);
-				EmojiToRender::new(emoji, 0.2)
+				EmojiToRender::new(emoji, 0.2, 1)
 			})
 			.cycle()
 			.take(emoji_count * EMOJI_REPETITION),
-	) else {
-		let _ = interaction
-			.ephemeral_reply(context.http, "Some file missing.")
-			.await;
-		return;
-	};
+	);
 	let image = canvas.encode_png().unwrap();
 
 	let _ = interaction
@@ -213,4 +238,81 @@ pub fn register() -> CreateCommand {
 			)
 			.required(true),
 		)
+}
+
+pub async fn execute_v2(context: Context<'_>, interaction: CommandInteraction) {
+	let input = interaction
+		.data
+		.options
+		.first()
+		.and_then(|option| option.value.as_str())
+		.unwrap();
+	let emojis = match parse_emoji_input_with_modifiers(context.emoji_map, input) {
+		Ok(emojis) => emojis,
+		Err(message) => {
+			let _ = interaction.ephemeral_reply(context.http, message).await;
+			return;
+		}
+	};
+	if !EmojisWithCounts::from_emojis_to_render(&emojis)
+		.are_owned_by_user(context.database, interaction.user.id)
+		.await
+	{
+		let _ = interaction
+			.ephemeral_reply(
+				context.http,
+				"You don't own all specified emojis in the required amounts.",
+			)
+			.await;
+		return;
+	}
+
+	const EMOJI_LIMIT: usize = 1_000;
+	const EMOJI_MIN_SIZE: f32 = 0.01;
+
+	let count: usize = emojis.iter().map(|emoji| emoji.count).sum();
+	if count > EMOJI_LIMIT {
+		let _ = interaction
+			.ephemeral_reply(
+				context.http,
+				format!("You can only place {} emojis.", EMOJI_LIMIT),
+			)
+			.await;
+		return;
+	} else if count == 0 {
+		let _ = interaction
+			.ephemeral_reply(context.http, "You ended up with 0 emojis.")
+			.await;
+		return;
+	}
+	if emojis.iter().any(|emoji| emoji.size < EMOJI_MIN_SIZE) {
+		let _ = interaction
+			.ephemeral_reply(
+				context.http,
+				format!("Minimum emoji size is {}.", EMOJI_MIN_SIZE),
+			)
+			.await;
+	}
+
+	let _ = interaction.defer(context.http).await;
+
+	let canvas = generate(emojis);
+	let image = canvas.encode_png().unwrap();
+
+	let _ = interaction
+		.follow_up_image(context.http, image.as_slice(), "image.png")
+		.await;
+}
+
+pub fn register_v2() -> CreateCommand {
+	CreateCommand::new("generate2")
+	 .description("Generage an image using your emojis.")
+	 .add_option(
+		CreateCommandOption::new(
+			CommandOptionType::String,
+			"emojis",
+			"The emojis to use. For each one, you can specify size and count, like \"👍0.2x5\".",
+		)
+		.required(true),
+	)
 }

@@ -5,6 +5,7 @@ use sqlx::{query, Pool, Sqlite};
 
 use crate::{
 	emoji::{Emoji, EmojiMap},
+	images::generate::EmojiToRender,
 	special_characters::ZWNJ,
 };
 
@@ -69,6 +70,22 @@ impl EmojisWithCounts {
 			.into_iter()
 			.flat_map(|(emoji, count)| [emoji].into_iter().cycle().take(count as usize))
 			.collect()
+	}
+	pub fn from_emojis_to_render<'l>(
+		iter: impl IntoIterator<Item = &'l EmojiToRender<'l>>,
+	) -> Self {
+		const MARGIN: f32 = 1.0 / 1_000_000.0;
+		let mut emojis = HashMap::new();
+
+		for &emoji in iter {
+			*emojis.entry(emoji.emoji()).or_insert(0.0) += emoji.cost();
+		}
+
+		Self::from_iter(
+			emojis
+				.into_iter()
+				.map(|(emoji, count)| (emoji, (count - MARGIN).ceil() as u32)),
+		)
 	}
 
 	/// Check a user's emoji inventory to see if it has the emojis.

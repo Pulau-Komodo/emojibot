@@ -48,6 +48,7 @@ impl EventHandler for DiscordEventHandler {
 				"private" => user_settings::private::execute(context, interaction).await,
 				"image" => images::rasterize::execute(context, interaction).await,
 				"generate" => images::generate::execute(context, interaction).await,
+				"generate2" => images::generate::execute_v2(context, interaction).await,
 				"testimage" => images::generate::execute_test(context, interaction).await,
 				_ => (),
 			};
@@ -69,6 +70,7 @@ impl EventHandler for DiscordEventHandler {
 						user_settings::private::register(),
 						images::rasterize::register(),
 						images::generate::register(),
+						images::generate::register_v2(),
 						images::generate::register_test(),
 					];
 					let commands = guild.set_commands(&context.http, commands).await.unwrap();
