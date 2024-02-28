@@ -270,7 +270,7 @@ pub async fn execute_v2(context: Context<'_>, interaction: CommandInteraction) {
 	}
 
 	const EMOJI_LIMIT: usize = 1_000;
-	const EMOJI_MIN_SIZE: f32 = 0.01;
+	const EMOJI_MIN_FRACTION: f32 = 0.01;
 
 	let count: usize = emojis.iter().map(|emoji| emoji.count).sum();
 	if count > EMOJI_LIMIT {
@@ -287,11 +287,14 @@ pub async fn execute_v2(context: Context<'_>, interaction: CommandInteraction) {
 			.await;
 		return;
 	}
-	if emojis.iter().any(|emoji| emoji.size < EMOJI_MIN_SIZE) {
+	if emojis
+		.iter()
+		.any(|emoji| emoji.fraction < EMOJI_MIN_FRACTION)
+	{
 		let _ = interaction
 			.ephemeral_reply(
 				context.http,
-				format!("Minimum emoji size is {}.", EMOJI_MIN_SIZE),
+				format!("Minimum emoji size is {}.", EMOJI_MIN_FRACTION),
 			)
 			.await;
 	}
