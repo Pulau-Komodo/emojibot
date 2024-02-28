@@ -177,12 +177,14 @@ pub struct EmojiMap {
 
 impl EmojiMap {
 	pub fn new() -> Self {
+		println!("Loading images.");
 		let images = load_emojis();
 		let map = EMOJI_LIST
 			.into_iter()
 			.enumerate()
 			.map(|(index, emoji)| (emoji, Emoji { emoji, index }))
 			.collect();
+		println!("Images loaded.");
 		Self { map, images }
 	}
 	pub fn get(&self, emoji: &str) -> Option<Emoji> {
