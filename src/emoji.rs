@@ -12,18 +12,22 @@ use serenity::model::prelude::ReactionType;
 
 const VS16: char = '\u{fe0f}';
 
-const NON_MIRROR_EMOJIS: [Range<usize>; 25] = [
+const NON_MIRROR_EMOJIS: [Range<usize>; 29] = [
 	53..54,
 	100..101,
 	134..136,
 	146..148,
 	157..159,
+	638..649,
+	650..653,
 	894..897,
 	910..911,
 	913..914,
 	919..920,
 	928..929,
 	936..937,
+	1033..1034,
+	1046..1047,
 	1072..1074,
 	1077..1082,
 	1085..1087,
@@ -38,6 +42,16 @@ const NON_MIRROR_EMOJIS: [Range<usize>; 25] = [
 	1277..1279,
 	1304..1538,
 	1535..1875,
+];
+
+const NON_ROTATE_EMOJIS: [Range<usize>; 7] = [
+	130..132,
+	134..136,
+	146..151,
+	641..649,
+	1443..1444,
+	1448..1471,
+	1552..1576,
 ];
 
 #[derive(Debug, Clone, Copy)]
@@ -131,10 +145,31 @@ pub struct EmojiWithImage<'t> {
 	/// An SVG render tree.
 	image: &'t resvg::usvg::Tree,
 	/// Whether it's OK to mirror the emoji. Emojis with text should not be mirrored, for example.
-	should_mirror: bool,
+	may_mirror: bool,
+	/// Whether it's OK to rotate the emoji. Mainly it's just emojis with meaningful directions that should not be rotated.
+	may_rotate: bool,
 }
 
 impl<'t> EmojiWithImage<'t> {
+	fn new(emoji: Emoji, image: &'t resvg::usvg::Tree) -> Self {
+		let search_range = |range: &Range<usize>| {
+			if range.start > emoji.index() {
+				Ordering::Greater
+			} else if range.end <= emoji.index() {
+				Ordering::Less
+			} else {
+				Ordering::Equal
+			}
+		};
+		let should_mirror = NON_MIRROR_EMOJIS.binary_search_by(search_range).is_err();
+		let should_rotate = NON_ROTATE_EMOJIS.binary_search_by(search_range).is_err();
+		Self {
+			emoji,
+			image,
+			may_mirror: should_mirror,
+			may_rotate: should_rotate,
+		}
+	}
 	pub fn emoji(&self) -> Emoji {
 		self.emoji
 	}
@@ -154,8 +189,11 @@ impl<'t> EmojiWithImage<'t> {
 	) {
 		resvg::render(self.image, transform, pixmap);
 	}
-	pub fn should_mirror(&self) -> bool {
-		self.should_mirror
+	pub fn may_mirror(&self) -> bool {
+		self.may_mirror
+	}
+	pub fn may_rotate(&self) -> bool {
+		self.may_rotate
 	}
 }
 
@@ -231,22 +269,7 @@ impl EmojiMap {
 	/// This gets the image by index, avoiding a hash look-up.
 	pub fn get_image(&self, emoji: Emoji) -> EmojiWithImage {
 		let image = &self.images[emoji.index()];
-		let should_mirror = NON_MIRROR_EMOJIS
-			.binary_search_by(|range| {
-				if range.start > emoji.index() {
-					Ordering::Greater
-				} else if range.end <= emoji.index() {
-					Ordering::Less
-				} else {
-					Ordering::Equal
-				}
-			})
-			.is_err();
-		EmojiWithImage {
-			emoji,
-			image,
-			should_mirror,
-		}
+		EmojiWithImage::new(emoji, image)
 	}
 }
 

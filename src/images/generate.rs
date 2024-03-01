@@ -26,10 +26,15 @@ const CANVAS_WIDTH: u32 = 500;
 const CANVAS_HEIGHT: u32 = 250;
 const EMOJI_REPETITION: usize = 5;
 
-fn random_angle(rng: &mut rand::rngs::ThreadRng) -> f32 {
-	rand_distr::Normal::new(0.0, 0.125 * PI)
-		.unwrap()
-		.sample(rng)
+/// Angle in radians.
+fn random_angle(rng: &mut rand::rngs::ThreadRng, may_rotate: bool) -> f32 {
+	if may_rotate && rng.gen_bool(0.1) {
+		rng.gen_range(0.0..2.0 * PI)
+	} else {
+		rand_distr::Normal::new(0.0, 0.125 * PI)
+			.unwrap()
+			.sample(rng)
+	}
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -70,7 +75,7 @@ fn place_emoji_randomly(
 	let emoji = emoji_to_render.emoji;
 	let size_with_margin = (size.powi(2) * 2.0).sqrt().ceil();
 	let half_margin = ((size_with_margin - size) / 2.0).ceil();
-	let flip = emoji_to_render.emoji.should_mirror() && rng.gen_bool(0.5);
+	let flip = emoji_to_render.emoji.may_mirror() && rng.gen_bool(0.5);
 	// If flipping, the image will end up on the left side of its own origin, but we still need it to never cross the left edge of the canvas.
 	let x_offset = if flip { size } else { 0.0 };
 	// Add half rotation margin so rotation can't make it go over the left or top edges.
@@ -79,7 +84,7 @@ fn place_emoji_randomly(
 
 	let scale = size / emoji.image().view_box().rect.width();
 	let horizontal_scale = if flip { -scale } else { scale };
-	let angle = random_angle(rng).to_degrees();
+	let angle = random_angle(rng, emoji_to_render.emoji.may_rotate()).to_degrees();
 	let transform = resvg::tiny_skia::Transform::from_rotate_at(
 		angle,
 		emoji.image().view_box().rect.width() / 2.0,
