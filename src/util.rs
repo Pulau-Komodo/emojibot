@@ -159,9 +159,9 @@ pub fn parse_emoji_input_with_modifiers<'l>(
 	}
 	if let Some(emoji) = last_emoji.take() {
 		let size: f32 = consume_number_input(input, &mut size_modifier, DEFAULT_EMOJI_SIZE)
-			.map_err(|err| format!("Error parsing {} as size modifier", err))?;
+			.map_err(|err| format!("Error parsing {} as size modifier.", err))?;
 		let multiplier: usize = consume_number_input(input, &mut multiplier, DEFAULT_EMOJI_COUNT)
-			.map_err(|err| format!("Error parsing {} as multiplier", err))?;
+			.map_err(|err| format!("Error parsing {} as multiplier.", err))?;
 		emojis.push(EmojiToRender::new(emoji, size, multiplier));
 	} else if size_modifier.is_some() || multiplier.is_some() {
 		return Err(String::from("Error parsing input."));
