@@ -249,7 +249,7 @@ pub struct EmojiMap {
 }
 
 impl EmojiMap {
-	pub fn new() -> Self {
+	pub fn load() -> Self {
 		println!("Loading images.");
 		let images = load_emojis();
 		let map = EMOJI_LIST
@@ -270,12 +270,6 @@ impl EmojiMap {
 	pub fn get_image(&self, emoji: Emoji) -> EmojiWithImage {
 		let image = &self.images[emoji.index()];
 		EmojiWithImage::new(emoji, image)
-	}
-}
-
-impl Default for EmojiMap {
-	fn default() -> Self {
-		Self::new()
 	}
 }
 

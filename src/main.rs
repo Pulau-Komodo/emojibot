@@ -33,7 +33,7 @@ async fn main() {
 		.await
 		.unwrap();
 
-	let emoji_map = EmojiMap::new();
+	let emoji_map = EmojiMap::load();
 
 	let handler = DiscordEventHandler::new(db_pool, emoji_map);
 	let mut client = serenity::Client::builder(
