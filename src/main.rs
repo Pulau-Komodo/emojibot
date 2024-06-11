@@ -8,7 +8,6 @@ use serenity::prelude::GatewayIntents;
 use sqlx::sqlite::SqlitePoolOptions;
 
 mod context;
-mod daily_emoji;
 mod discord_events;
 mod emoji;
 mod emoji_list;
@@ -16,6 +15,7 @@ mod emojis_with_counts;
 mod find_emoji;
 mod images;
 mod inventory;
+mod periodic_emoji;
 mod queries;
 mod special_characters;
 mod trading;
@@ -32,6 +32,12 @@ async fn main() {
 		.connect("./data/db.db")
 		.await
 		.unwrap();
+
+	let version = sqlx::query!("SELECT sqlite_version() as version;")
+		.fetch_one(&db_pool)
+		.await
+		.unwrap();
+	println!("SQLite version {}", version.version.unwrap());
 
 	let emoji_map = EmojiMap::load();
 

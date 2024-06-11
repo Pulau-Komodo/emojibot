@@ -6,12 +6,14 @@ use sqlx::{query, Pool, Sqlite};
 
 use crate::{emoji::Emoji, queries::give_emoji, user_settings::private::is_private};
 
-async fn seen_today(database: &Pool<Sqlite>, user: UserId) -> bool {
+/// Period is currently one week.
+/// To do: replace date comparison with less janky %G-%V implementation when SQLx supports SQLite 3.46.
+async fn seen_this_period(database: &Pool<Sqlite>, user: UserId) -> bool {
 	let user_id = user.get() as i64;
 	let seen = query!(
 		"
 		SELECT CASE
-			WHEN date >= date() THEN true
+			WHEN cast(strftime('%j', date) / 7 as int) == cast(strftime('%j', date()) / 7 as int) THEN true
 			ELSE false
 			END seen_today
 		FROM last_seen
@@ -39,8 +41,12 @@ async fn seen_today(database: &Pool<Sqlite>, user: UserId) -> bool {
 	seen
 }
 
-pub async fn maybe_give_daily_emoji(database: &Pool<Sqlite>, context: Context, message: Message) {
-	if !seen_today(database, message.author.id).await {
+pub async fn maybe_give_periodic_emoji(
+	database: &Pool<Sqlite>,
+	context: Context,
+	message: Message,
+) {
+	if !seen_this_period(database, message.author.id).await {
 		let emoji = Emoji::random();
 		give_emoji(database, message.author.id, emoji).await;
 		if !is_private(database, message.author.id).await {
