@@ -12,8 +12,8 @@ use crate::{
 };
 
 use super::queries::{
-	add_to_group, group_name_and_contents, list_groups, remove_from_group, rename_group,
-	reposition_group, RenameGroupError, RepositionOutcome,
+	add_to_group, get_ungrouped_emojis, group_name_and_contents, list_groups, remove_from_group,
+	rename_group, reposition_group, RenameGroupError, RepositionOutcome,
 };
 
 pub async fn execute(context: Context<'_>, mut interaction: CommandInteraction) {
@@ -38,6 +38,9 @@ pub async fn execute(context: Context<'_>, mut interaction: CommandInteraction) 
 		}
 		"view" => {
 			view(context, interaction, options).await;
+		}
+		"ungrouped" => {
+			view_ungrouped(context, interaction).await;
 		}
 		"reposition" => {
 			// let _ = ephemeral_reply(context, interaction, "Not yet implemented.").await;
@@ -271,6 +274,18 @@ async fn view(
 	_ = interaction.ephemeral_reply(context.http, message).await;
 }
 
+async fn view_ungrouped(context: Context<'_>, interaction: CommandInteraction) {
+	let emojis =
+		get_ungrouped_emojis(context.database, context.emoji_map, interaction.user.id).await;
+
+	let message = if emojis.is_empty() {
+		format!("You have no ungrouped emojis.")
+	} else {
+		format!("Ungrouped emojis: {}", emojis)
+	};
+	_ = interaction.ephemeral_reply(context.http, message).await;
+}
+
 async fn reposition(
 	context: Context<'_>,
 	interaction: CommandInteraction,
@@ -368,6 +383,7 @@ pub fn register() -> CreateCommand {
 		.add_option(CreateCommandOption::new(CommandOptionType::SubCommand, "view", "Views the contents of one of your emoji groups.")
 			.add_sub_option(CreateCommandOption::new(CommandOptionType::String, "group", "The group to view the contents of.").max_length(50).required(true))
 		)
+		.add_option(CreateCommandOption::new(CommandOptionType::SubCommand, "ungrouped", "Views the ungrouped emojis."))
 		.add_option(CreateCommandOption::new(CommandOptionType::SubCommand, "reposition", "Repositions the group in the group list. This is mostly relevant when viewing inventory.")
 			.add_sub_option(CreateCommandOption::new(CommandOptionType::String, "group", "The group to reposition.").max_length(50).required(true))
 			.add_sub_option(CreateCommandOption::new(CommandOptionType::Integer, "position", "The position to move the group to, where 0 is the first.").min_int_value(0).required(true))
