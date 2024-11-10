@@ -55,6 +55,15 @@ pub async fn execute(context: Context<'_>, mut interaction: CommandInteraction) 
 
 	let (groups, ungrouped) =
 		get_user_emojis_grouped(context.database, context.emoji_map, target).await;
+
+	// groups.extend(ungrouped);
+	// let image = make_inventory_image(groups, &context.emoji_map);
+	// interaction
+	// 	.reply_image(context.http, image.as_slice(), "inventory.png", !is_public)
+	// 	.await
+	// 	.unwrap();
+	// return;
+
 	let emoji_count = groups
 		.iter()
 		.chain(&ungrouped)
