@@ -6,6 +6,7 @@ use discord_events::DiscordEventHandler;
 use emoji::EmojiMap;
 use serenity::prelude::GatewayIntents;
 use sqlx::sqlite::SqlitePoolOptions;
+use trading::trading_roles::get_trading_roles;
 
 mod context;
 mod daily_emoji;
@@ -35,7 +36,7 @@ async fn main() {
 
 	let emoji_map = EmojiMap::load();
 
-	let handler = DiscordEventHandler::new(db_pool, emoji_map);
+	let handler = DiscordEventHandler::new(db_pool, emoji_map, get_trading_roles());
 	let mut client = serenity::Client::builder(
 		&discord_token,
 		GatewayIntents::GUILDS | GatewayIntents::GUILD_MESSAGES,

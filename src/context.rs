@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use serenity::{
+	all::{CacheHttp, RoleId},
 	client::Cache,
 	http::Http,
 	model::prelude::{GuildId, UserId},
@@ -13,6 +14,7 @@ use crate::emoji::EmojiMap;
 pub struct Context<'l> {
 	pub database: &'l Pool<Sqlite>,
 	pub emoji_map: &'l EmojiMap,
+	pub trading_roles: &'l Vec<RoleId>,
 	pub http: &'l Arc<Http>,
 	pub cache: &'l Arc<Cache>,
 }
@@ -21,12 +23,14 @@ impl<'l> Context<'l> {
 	pub fn new(
 		database: &'l Pool<Sqlite>,
 		emoji_map: &'l EmojiMap,
+		trading_roles: &'l Vec<RoleId>,
 		http: &'l Arc<Http>,
 		cache: &'l Arc<Cache>,
 	) -> Self {
 		Self {
 			database,
 			emoji_map,
+			trading_roles,
 			http,
 			cache,
 		}
@@ -50,5 +54,14 @@ impl<'l> Context<'l> {
 		} else {
 			member.display_name().to_owned()
 		}
+	}
+}
+
+impl<'l> CacheHttp for Context<'l> {
+	fn http(&self) -> &Http {
+		self.http
+	}
+	fn cache(&self) -> Option<&Arc<Cache>> {
+		Some(self.cache)
 	}
 }

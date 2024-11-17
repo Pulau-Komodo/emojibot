@@ -10,13 +10,15 @@ use crate::{
 pub struct DiscordEventHandler {
 	database: Pool<Sqlite>,
 	emoji_map: EmojiMap,
+	trading_roles: Vec<RoleId>,
 }
 
 impl DiscordEventHandler {
-	pub fn new(database: Pool<Sqlite>, emoji_map: EmojiMap) -> Self {
+	pub fn new(database: Pool<Sqlite>, emoji_map: EmojiMap, trading_roles: Vec<RoleId>) -> Self {
 		Self {
 			database,
 			emoji_map,
+			trading_roles,
 		}
 	}
 }
@@ -35,6 +37,7 @@ impl EventHandler for DiscordEventHandler {
 			let context = crate::context::Context::new(
 				&self.database,
 				&self.emoji_map,
+				&self.trading_roles,
 				&context.http,
 				&context.cache,
 			);

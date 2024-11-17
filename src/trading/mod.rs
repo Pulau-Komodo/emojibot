@@ -2,6 +2,7 @@ mod queries;
 pub(crate) mod recycling;
 pub(crate) mod trade;
 mod trade_offer;
+pub(crate) mod trading_roles;
 
 use serenity::{
 	all::{ButtonStyle, CommandDataOption, CommandInteraction, GuildId, UserId},
@@ -19,7 +20,7 @@ use crate::{
 	util::get_and_parse_emoji_option,
 };
 
-use self::{queries::*, trade_offer::TradeOffer};
+use self::{queries::*, trade_offer::TradeOffer, trading_roles::has_trading_role};
 
 pub(super) async fn try_offer_trade(
 	context: Context<'_>,
@@ -149,6 +150,15 @@ pub(super) async fn try_accept_offer(
 	accepting_user: UserId,
 	offering_user: UserId,
 ) -> Result<(), String> {
+	if !has_trading_role(context, guild, accepting_user).await {
+		return Err(String::from("You do not have a role that allows trading."));
+	}
+	if !has_trading_role(context, guild, offering_user).await {
+		return Err(String::from(
+			"Offering user does not have a role that allows trading.",
+		));
+	}
+
 	let offerer_name = context.get_user_name(guild, offering_user).await;
 	let trade = match validate_trade_offer(
 		context.database,
