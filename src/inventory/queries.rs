@@ -366,6 +366,32 @@ pub(super) async fn group_name_and_contents(
 	Some((name, emojis))
 }
 
+pub(super) async fn get_ungrouped_emojis(
+	database: &Pool<Sqlite>,
+	emoji_map: &EmojiMap,
+	user: UserId,
+) -> EmojisWithCounts {
+	let user_id = user.get() as i64;
+	let records = query!(
+		"
+		SELECT emoji, COUNT(*) as count
+		FROM emoji_inventory
+		WHERE user = ? AND group_id IS NULL
+		GROUP BY emoji
+		",
+		user_id,
+	)
+	.fetch_all(database)
+	.await
+	.unwrap();
+	EmojisWithCounts::from_iter(records.into_iter().map(|record| {
+		(
+			emoji_map.get(record.emoji.as_str()).unwrap(),
+			record.count as u32,
+		)
+	}))
+}
+
 pub(super) enum RepositionOutcome {
 	MovedToFront,
 	MovedToBack,
