@@ -164,7 +164,7 @@ pub async fn execute_test(context: Context<'_>, interaction: CommandInteraction)
 	};
 	let image = generate(emojis).encode_png().unwrap();
 	let _ = interaction
-		.reply_image(context.http, &image, "test.png")
+		.public_reply_image(context.http, &image, "test.png")
 		.await;
 	// let _ = interaction
 	// 	.public_reply(context.http, "No test currently active.")
@@ -232,7 +232,7 @@ pub async fn execute(context: Context<'_>, interaction: CommandInteraction) {
 	let image = canvas.encode_png().unwrap();
 
 	let _ = interaction
-		.reply_image(context.http, image.as_slice(), "image.png")
+		.public_reply_image(context.http, image.as_slice(), "image.png")
 		.await;
 }
 
