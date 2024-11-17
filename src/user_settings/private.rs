@@ -38,7 +38,8 @@ async fn toggle_private(executor: &Pool<Sqlite>, user: UserId) -> bool {
 	.fetch_one(executor)
 	.await
 	.unwrap()
-	.private != 0
+	.private
+		!= 0
 }
 
 pub async fn execute(context: Context<'_>, interaction: CommandInteraction) {
