@@ -34,6 +34,19 @@ pub trait ReplyShortcuts {
 		http: &Arc<Http>,
 		image: &[u8],
 		file_name: &str,
+		ephemeral: bool,
+	) -> SerenityResult<()>;
+	async fn public_reply_image(
+		&self,
+		http: &Arc<Http>,
+		image: &[u8],
+		file_name: &str,
+	) -> SerenityResult<()>;
+	async fn ephemeral_reply_image(
+		&self,
+		http: &Arc<Http>,
+		image: &[u8],
+		file_name: &str,
 	) -> SerenityResult<()>;
 	async fn follow_up_image(
 		&self,
@@ -76,15 +89,33 @@ impl ReplyShortcuts for CommandInteraction {
 		http: &Arc<Http>,
 		image: &[u8],
 		file_name: &str,
+		ephemeral: bool,
 	) -> SerenityResult<()> {
 		self.create_response(
 			http,
 			CreateInteractionResponse::Message(
 				CreateInteractionResponseMessage::new()
-					.add_file(CreateAttachment::bytes(image, file_name)),
+					.add_file(CreateAttachment::bytes(image, file_name))
+					.ephemeral(ephemeral),
 			),
 		)
 		.await
+	}
+	async fn public_reply_image(
+		&self,
+		http: &Arc<Http>,
+		image: &[u8],
+		file_name: &str,
+	) -> SerenityResult<()> {
+		self.reply_image(http, image, file_name, false).await
+	}
+	async fn ephemeral_reply_image(
+		&self,
+		http: &Arc<Http>,
+		image: &[u8],
+		file_name: &str,
+	) -> SerenityResult<()> {
+		self.reply_image(http, image, file_name, true).await
 	}
 	async fn follow_up_image(
 		&self,

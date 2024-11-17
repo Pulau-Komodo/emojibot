@@ -3,8 +3,8 @@ use serenity::{async_trait, model::prelude::*, prelude::*};
 use sqlx::{Pool, Sqlite};
 
 use crate::{
-	daily_emoji::maybe_give_daily_emoji, emoji::EmojiMap, find_emoji, images, inventory, trading,
-	user_settings,
+	emoji::EmojiMap, find_emoji, images, inventory, periodic_emoji::maybe_give_periodic_emoji,
+	trading, user_settings,
 };
 
 pub struct DiscordEventHandler {
@@ -27,7 +27,7 @@ impl DiscordEventHandler {
 impl EventHandler for DiscordEventHandler {
 	async fn message(&self, context: Context, message: Message) {
 		if !message.is_own(&context.cache) && !message.author.bot {
-			maybe_give_daily_emoji(&self.database, context, message).await;
+			maybe_give_periodic_emoji(&self.database, context, message).await;
 		}
 	}
 

@@ -45,7 +45,7 @@ pub async fn execute(context: Context<'_>, interaction: CommandInteraction) {
 	};
 
 	let _ = interaction
-		.reply_image(context.http, png.as_slice(), "emoji.png")
+		.public_reply_image(context.http, png.as_slice(), "emoji.png")
 		.await;
 }
 
