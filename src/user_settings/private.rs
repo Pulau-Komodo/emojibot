@@ -19,7 +19,7 @@ pub async fn is_private(executor: &Pool<Sqlite>, user: UserId) -> bool {
 	.fetch_optional(executor)
 	.await
 	.unwrap()
-	.map_or(false, |record| record.private != 0)
+	.is_some_and(|record| record.private != 0)
 }
 
 /// Toggles a user's private setting, and returns whether it is now private or not.

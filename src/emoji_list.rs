@@ -1,4 +1,4 @@
-pub const EMOJI_LIST: [&str; 1875] = [
+pub static EMOJI_LIST: [&str; 1875] = [
 	// people
 	"😀",
 	"😃",

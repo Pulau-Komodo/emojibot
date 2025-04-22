@@ -283,7 +283,7 @@ async fn view_ungrouped(context: Context<'_>, interaction: CommandInteraction) {
 		get_ungrouped_emojis(context.database, context.emoji_map, interaction.user.id).await;
 
 	let message = if emojis.is_empty() {
-		format!("You have no ungrouped emojis.")
+		String::from("You have no ungrouped emojis.")
 	} else {
 		format!("Ungrouped emojis: {}", emojis)
 	};

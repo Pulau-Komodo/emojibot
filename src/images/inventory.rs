@@ -83,6 +83,5 @@ fn attach_images(
 pub fn make_inventory_image(emotes: Vec<EmojisWithCounts>, emoji_map: &EmojiMap) -> Vec<u8> {
 	let groups = attach_images(emotes, emoji_map);
 	let canvas = generate(groups);
-	let image = canvas.encode_png().unwrap();
-	image
+	canvas.encode_png().unwrap()
 }

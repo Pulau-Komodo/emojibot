@@ -57,7 +57,7 @@ impl<'l> Context<'l> {
 	}
 }
 
-impl<'l> CacheHttp for Context<'l> {
+impl CacheHttp for Context<'_> {
 	fn http(&self) -> &Http {
 		self.http
 	}

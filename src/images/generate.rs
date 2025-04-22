@@ -109,11 +109,11 @@ fn place_emoji_randomly(
 	}
 }
 
-async fn parse_emoji_and_group_input<'s>(
+async fn parse_emoji_and_group_input(
 	database: &Pool<Sqlite>,
 	emoji_map: &EmojiMap,
 	user: UserId,
-	input: &'s str,
+	input: &str,
 ) -> Result<EmojisWithCounts, String> {
 	let mut emojis = Vec::new();
 	for substring in input.split(',') {
