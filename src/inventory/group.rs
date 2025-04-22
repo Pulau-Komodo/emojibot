@@ -72,7 +72,7 @@ async fn add(
 	let emojis = EmojisWithCounts::from_flat(&emojis);
 	let emoji_count = emojis.emoji_count();
 
-	let (group_name, added_emojis) =
+	let (group_name, added_emojis, group_is_new) =
 		add_to_group(context.database, interaction.user.id, group_name, &emojis).await;
 
 	if added_emojis.is_empty() {
@@ -87,12 +87,16 @@ async fn add(
 
 	let dropped_emojis = emoji_count - added_emojis.emoji_count();
 
-	let mut message = format!("Added {} to {}.", added_emojis, group_name);
+	let mut message = if group_is_new {
+		format!("Created {} and added {} to it.", group_name, added_emojis)
+	} else {
+		format!("Added {} to {}.", added_emojis, group_name)
+	};
 
 	match dropped_emojis {
 		0 => (),
-		1 => message.push_str(" You did not have the other one."),
-		n => write!(message, " You did not have the other {}.", n).unwrap(),
+		1 => message.push_str(" You did not have the other emoji."),
+		n => write!(message, " You did not have the other {} emojis.", n).unwrap(),
 	}
 
 	let _ = interaction.ephemeral_reply(context.http, message).await;

@@ -56,12 +56,13 @@ async fn close_ordering_gaps(executor: &mut Transaction<'_, Sqlite>, user: UserI
 	}
 }
 
+/// Returns the group name, the emojis successfully added to that group, and whether the group was newly made.
 pub(super) async fn add_to_group(
 	executor: &Pool<Sqlite>,
 	user: UserId,
 	group_name: &str,
 	emojis: &EmojisWithCounts,
-) -> (String, EmojisWithCounts) {
+) -> (String, EmojisWithCounts, bool) {
 	let user_id = user.get() as i64;
 	let mut transaction = executor.begin().await.unwrap();
 	let group_count = query!(
@@ -76,18 +77,29 @@ pub(super) async fn add_to_group(
 	.await
 	.unwrap()
 	.group_count;
-	let group = query!(
+
+	let group_is_new = query!(
 		"
 		INSERT INTO emoji_inventory_groups (user, name, sort_order)
 		VALUES (?, ?, ? + 1)
 		ON CONFLICT (user, name COLLATE NOCASE) DO NOTHING;
+		",
+		user_id,
+		group_name,
+		group_count
+	)
+	.execute(&mut *transaction)
+	.await
+	.unwrap()
+	.rows_affected()
+		> 0;
+
+	let group = query!(
+		"
 		SELECT id, name
 		FROM emoji_inventory_groups
 		WHERE user = ? AND name = ?;
 		",
-		user_id,
-		group_name,
-		group_count,
 		user_id,
 		group_name,
 	)
@@ -133,7 +145,11 @@ pub(super) async fn add_to_group(
 
 	transaction.commit().await.unwrap();
 
-	(group.name, EmojisWithCounts::new(added_emojis))
+	(
+		group.name,
+		EmojisWithCounts::new(added_emojis),
+		group_is_new,
+	)
 }
 
 pub(super) async fn remove_from_group(
