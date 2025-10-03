@@ -26,7 +26,7 @@ impl DiscordEventHandler {
 #[async_trait]
 impl EventHandler for DiscordEventHandler {
 	async fn message(&self, context: Context, message: Message) {
-		if !message.is_own(&context.cache) && !message.author.bot {
+		if message.author.id != context.cache.current_user().id && !message.author.bot {
 			maybe_give_periodic_emoji(&self.database, context, message).await;
 		}
 	}

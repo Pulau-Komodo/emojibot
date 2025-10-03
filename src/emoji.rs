@@ -115,7 +115,7 @@ impl Display for Emoji {
 
 impl PartialOrd for Emoji {
 	fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-		Some(self.index.cmp(&other.index))
+		Some(self.cmp(other))
 	}
 }
 
@@ -199,7 +199,7 @@ impl<'t> EmojiWithImage<'t> {
 
 impl PartialOrd for EmojiWithImage<'_> {
 	fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-		Some(self.emoji.index.cmp(&other.emoji.index))
+		Some(self.cmp(other))
 	}
 }
 
@@ -263,11 +263,11 @@ impl EmojiMap {
 	pub fn get(&self, emoji: &str) -> Option<Emoji> {
 		self.map.get(emoji).copied()
 	}
-	pub fn get_with_image(&self, emoji: &str) -> Option<EmojiWithImage> {
+	pub fn get_with_image(&'_ self, emoji: &str) -> Option<EmojiWithImage<'_>> {
 		self.map.get(emoji).map(|emoji| self.get_image(*emoji))
 	}
 	/// This gets the image by index, avoiding a hash look-up.
-	pub fn get_image(&self, emoji: Emoji) -> EmojiWithImage {
+	pub fn get_image(&'_ self, emoji: Emoji) -> EmojiWithImage<'_> {
 		let image = &self.images[emoji.index()];
 		EmojiWithImage::new(emoji, image)
 	}

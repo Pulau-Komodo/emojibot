@@ -117,7 +117,7 @@ impl EmojisWithCounts {
 		true
 	}
 
-	pub fn iter(&self) -> std::slice::Iter<(Emoji, u32)> {
+	pub fn iter(&'_ self) -> std::slice::Iter<'_, (Emoji, u32)> {
 		self.0.iter()
 	}
 

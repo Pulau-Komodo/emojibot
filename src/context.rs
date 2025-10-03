@@ -40,8 +40,8 @@ impl<'l> Context<'l> {
 	pub async fn get_user_name(&self, guild: GuildId, user: UserId) -> String {
 		let member = if let Some(member) = self
 			.cache
-			.member(guild, user)
-			.map(|member| member.to_owned())
+			.guild(guild)
+			.and_then(|guild| guild.members.get(&user).cloned())
 		{
 			member
 		} else if let Ok(member) = self.http.get_member(guild, user).await {
@@ -50,7 +50,7 @@ impl<'l> Context<'l> {
 			return format!("{}", user);
 		};
 		if let Some(nick) = member.nick {
-			nick.to_owned()
+			nick
 		} else {
 			member.display_name().to_owned()
 		}

@@ -60,8 +60,8 @@ fn generate(groups: Vec<(String, Vec<EmojiWithImage>)>) -> resvg::tiny_skia::Pix
 
 fn attach_images(
 	emotes: Vec<EmojisWithCounts>,
-	emoji_map: &EmojiMap,
-) -> Vec<(String, Vec<EmojiWithImage>)> {
+	emoji_map: &'_ EmojiMap,
+) -> Vec<(String, Vec<EmojiWithImage<'_>>)> {
 	emotes
 		.into_iter()
 		.map(|emojis| {
