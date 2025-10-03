@@ -7,15 +7,15 @@ use sqlx::{query, Pool, Sqlite};
 use crate::{emoji::Emoji, queries::give_emoji, user_settings::private::is_private};
 
 /// Period is currently one week.
-/// To do: replace date comparison with less janky %G-%V implementation when SQLx supports SQLite 3.46.
 async fn seen_this_period(database: &Pool<Sqlite>, user: UserId) -> bool {
 	let user_id = user.get() as i64;
+	// %G is ISO 8601 year corresponding to %V. %V is ISO 8601 week. It is basically a week that is not interrupted by year changes.
 	let seen = query!(
 		r#"
 		SELECT CASE
-			WHEN cast(strftime('%j', date) / 7 as int) == cast(strftime('%j', date()) / 7 as int) THEN true
+			WHEN strftime('%G-%V', date) == strftime('%G-%V', date()) THEN true
 			ELSE false
-			END "seen_today!: bool"
+			END "seen_this_period!: bool"
 		FROM last_seen
 		WHERE user = ?
 		"#,
@@ -24,7 +24,7 @@ async fn seen_this_period(database: &Pool<Sqlite>, user: UserId) -> bool {
 	.fetch_optional(database)
 	.await
 	.unwrap()
-	.map(|record| record.seen_today)
+	.map(|record| record.seen_this_period)
 	.unwrap_or(false);
 	if !seen {
 		query!(
