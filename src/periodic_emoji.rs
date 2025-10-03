@@ -11,20 +11,20 @@ use crate::{emoji::Emoji, queries::give_emoji, user_settings::private::is_privat
 async fn seen_this_period(database: &Pool<Sqlite>, user: UserId) -> bool {
 	let user_id = user.get() as i64;
 	let seen = query!(
-		"
+		r#"
 		SELECT CASE
 			WHEN cast(strftime('%j', date) / 7 as int) == cast(strftime('%j', date()) / 7 as int) THEN true
 			ELSE false
-			END seen_today
+			END "seen_today!: bool"
 		FROM last_seen
 		WHERE user = ?
-		",
+		"#,
 		user_id
 	)
 	.fetch_optional(database)
 	.await
 	.unwrap()
-	.map(|record| record.seen_today != 0)
+	.map(|record| record.seen_today)
 	.unwrap_or(false);
 	if !seen {
 		query!(

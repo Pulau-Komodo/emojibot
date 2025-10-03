@@ -387,7 +387,7 @@ pub(super) async fn remove_invalidated_trade_offers(
 				.await
 				.unwrap()
 				.count;
-				if count < emoji_record.count as i32 {
+				if count < emoji_record.count {
 					query!(
 						"
 						DELETE FROM trade_offers

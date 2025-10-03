@@ -432,11 +432,11 @@ pub(super) async fn reposition_group(
 		return Err(());
 	};
 	let group = query!(
-		"
-		SELECT name, sort_order - 1 AS sort_order
+		r#"
+		SELECT name, sort_order - 1 AS "sort_order!: u32"
 		FROM emoji_inventory_groups
 		WHERE user = ? AND name  = ?
-		",
+		"#,
 		user_id,
 		name
 	)
@@ -445,7 +445,7 @@ pub(super) async fn reposition_group(
 	.unwrap();
 
 	let name = group.name;
-	let current_position = group.sort_order as u32;
+	let current_position = group.sort_order;
 
 	let group_count = query!(
 		"
